@@ -19,6 +19,7 @@ const MAX_VIOLATIONS = 5;
 let tabSwitchCount = 0;
 let isExamActive = true;
 let isSubmitting = false;
+let isNavigationLocked = false;
 
 /**
  * Initialize the exam from Thymeleaf data
@@ -34,6 +35,44 @@ function initializeExam(examData, difficultiesData, examInfoData) {
     initializeTimer();
     displayDeadline();
     initializeAntiCheating();
+    lockNavigationDuringExam();
+}
+
+function appendExamMetaInputs(form) {
+    const examIdValue = examInfo && examInfo.examId ? String(examInfo.examId) : '';
+    const distributedExamIdValue = examInfo && examInfo.distributedExamId ? String(examInfo.distributedExamId) : '';
+
+    if (examIdValue) {
+        const examIdInput = document.createElement('input');
+        examIdInput.type = 'hidden';
+        examIdInput.name = 'examId';
+        examIdInput.value = examIdValue;
+        form.appendChild(examIdInput);
+    }
+
+    if (distributedExamIdValue) {
+        const distributedExamIdInput = document.createElement('input');
+        distributedExamIdInput.type = 'hidden';
+        distributedExamIdInput.name = 'distributedExamId';
+        distributedExamIdInput.value = distributedExamIdValue;
+        form.appendChild(distributedExamIdInput);
+    }
+}
+
+function lockNavigationDuringExam() {
+    if (isNavigationLocked) {
+        return;
+    }
+    isNavigationLocked = true;
+
+    history.pushState({ examLocked: true }, '', window.location.href);
+
+    window.addEventListener('popstate', () => {
+        if (isExamActive && !isSubmitting) {
+            history.pushState({ examLocked: true }, '', window.location.href);
+            showWarningModal('Finish and submit your exam before leaving this page.');
+        }
+    });
 }
 
 /**
@@ -320,6 +359,8 @@ function submitExam() {
             input.value = value;
             form.appendChild(input);
         }
+
+        appendExamMetaInputs(form);
         
         // Clear localStorage
         localStorage.removeItem('examAnswers');
@@ -465,6 +506,8 @@ function autoSubmitExam() {
             input.value = value;
             form.appendChild(input);
         }
+
+        appendExamMetaInputs(form);
         
         form.submit();
     }, 3000);

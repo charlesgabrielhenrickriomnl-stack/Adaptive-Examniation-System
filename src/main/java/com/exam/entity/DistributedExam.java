@@ -1,0 +1,61 @@
+package com.exam.entity;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "distributed_exams")
+public class DistributedExam {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String studentEmail;
+
+    @Column(nullable = false)
+    private String examId;
+
+    @Column(nullable = false)
+    private String subject;
+
+    @Column(nullable = false)
+    private String examName;
+
+    @Column(nullable = false)
+    private String activityType;
+
+    @Column(nullable = false)
+    private Integer timeLimit;
+
+    @Column
+    private String deadline;
+
+    @Column(nullable = false)
+    private LocalDateTime distributedAt;
+
+    @Column(nullable = false)
+    private boolean submitted = false;
+
+    // Getters and setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getStudentEmail() { return studentEmail; }
+    public void setStudentEmail(String studentEmail) { this.studentEmail = studentEmail; }
+    public String getExamId() { return examId; }
+    public void setExamId(String examId) { this.examId = examId; }
+    public String getSubject() { return subject; }
+    public void setSubject(String subject) { this.subject = subject; }
+    public String getExamName() { return examName; }
+    public void setExamName(String examName) { this.examName = examName; }
+    public String getActivityType() { return activityType; }
+    public void setActivityType(String activityType) { this.activityType = activityType; }
+    public Integer getTimeLimit() { return timeLimit; }
+    public void setTimeLimit(Integer timeLimit) { this.timeLimit = timeLimit; }
+    public String getDeadline() { return deadline; }
+    public void setDeadline(String deadline) { this.deadline = deadline; }
+    public LocalDateTime getDistributedAt() { return distributedAt; }
+    public void setDistributedAt(LocalDateTime distributedAt) { this.distributedAt = distributedAt; }
+    public boolean isSubmitted() { return submitted; }
+    public void setSubmitted(boolean submitted) { this.submitted = submitted; }
+}

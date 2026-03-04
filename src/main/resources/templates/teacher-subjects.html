@@ -14,9 +14,7 @@
     <div th:replace="teacher-nav :: teacherNav"></div>
 
     <div class="teacher-content-wrapper">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-10 mx-auto">
+        <div class="container-fluid subject-management-container">
                     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                         <div>
                             <h2 class="text-primary mb-0">Subject Management</h2>
@@ -54,7 +52,7 @@
                         </div>
                     </div>
 
-                    <div th:if="${!#lists.isEmpty(subjects)}" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 subject-grid">
+                    <div th:if="${!#lists.isEmpty(subjects)}" class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xxl-4 g-4 subject-grid">
                         <div th:each="subject : ${subjects}" class="col subject-card-item"
                              th:attr="data-search=${(subject.subjectName ?: '') + ' ' + (subject.description ?: '')}">
                             <div class="card upload-card h-100 subject-card">
@@ -97,8 +95,6 @@
                         <i class="bi bi-search text-muted mb-2"></i>
                         <p class="mb-0 text-muted">No subjects match your search.</p>
                     </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -134,6 +130,11 @@
 </div>
 
 <style>
+.subject-management-container {
+    padding-left: clamp(0.75rem, 1.6vw, 1.75rem);
+    padding-right: clamp(0.75rem, 1.6vw, 1.75rem);
+}
+
 .subject-grid .col {
     display: flex;
 }
@@ -147,13 +148,12 @@
 }
 
 .subject-card {
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    transition: box-shadow 0.2s ease;
     width: 100%;
     border-radius: 14px;
 }
 
 .subject-card:hover {
-    transform: translateY(-3px);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 

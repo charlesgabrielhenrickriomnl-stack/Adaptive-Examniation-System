@@ -52,6 +52,7 @@
         .activity-item { transition: background 0.15s; }
         .activity-item:hover { background: #fdf6f0; }
         .activity-pending { border-left: 3px solid var(--eac-gold) !important; }
+        .activity-missed { border-left: 3px solid var(--bs-danger) !important; }
         .activity-item .date-text { color: #555; font-size: 0.78rem; }
         .min-w-0 { min-width: 0; }
         .section-title {
@@ -277,7 +278,7 @@
                         <div th:if="${subject.activityCount > 0}" class="activity-list">
                             <div th:each="activity : ${subject.activities}"
                                  class="activity-item border-bottom p-3"
-                                 th:classappend="${activity.status == 'pending' ? 'activity-pending' : ''}">
+                                   th:classappend="${activity.status == 'pending' ? 'activity-pending' : (activity.status == 'missed' ? 'activity-missed' : '')}">
 
                                 <div class="d-flex align-items-start">
                                     <div class="flex-grow-1 min-w-0">
@@ -291,6 +292,9 @@
                                                   th:text="${activity.type}">Type</span>
                                             <span th:if="${activity.status == 'pending'}" class="badge bg-warning text-dark">
                                                 <i class="bi bi-clock"></i> Pending
+                                            </span>
+                                            <span th:if="${activity.status == 'missed'}" class="badge bg-danger">
+                                                <i class="bi bi-exclamation-circle"></i> Missed
                                             </span>
                                         </div>
 
@@ -313,6 +317,18 @@
                                             <small class="date-text d-block">
                                                 <i class="bi bi-calendar-check me-1"></i>
                                                 Submitted: <span th:text="${activity.submittedAt != null ? #temporals.format(activity.submittedAt, 'MMM dd, yyyy') : 'N/A'}">Date</span>
+                                            </small>
+                                        </div>
+
+                                        <div th:if="${activity.status == 'missed'}" class="mt-1">
+                                            <small class="text-danger d-block">
+                                                <i class="bi bi-x-circle me-1"></i>
+                                                Missed due to no submission before deadline
+                                            </small>
+                                            <small th:if="${activity.deadline != null && !activity.deadline.isEmpty()}"
+                                                   class="text-muted d-block mt-1">
+                                                <i class="bi bi-calendar-event"></i>
+                                                Deadline was: <span th:text="${activity.deadline}">Deadline</span>
                                             </small>
                                         </div>
 

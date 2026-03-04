@@ -32,7 +32,7 @@ body {
 .teacher-sidebar {
     width: calc(100% - 6in);
     margin: 0 3in;
-    background: linear-gradient(135deg, var(--eac-maroon) 0%, var(--eac-maroon-dark) 100%);
+    background: linear-gradient(135deg, #a9374b 0%, #7f1427 52%, #520b16 100%);
     border-radius: 14px;
     color: #fff;
     display: flex;

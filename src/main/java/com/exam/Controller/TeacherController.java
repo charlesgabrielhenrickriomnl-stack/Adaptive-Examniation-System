@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import com.exam.entity.DistributedExam;
 import com.exam.entity.EnrolledStudent;
 import com.exam.entity.ExamSubmission;
 import com.exam.entity.OriginalProcessedPaper;
@@ -47,6 +48,8 @@ import com.google.gson.reflect.TypeToken;
 @Controller
 @RequestMapping("/teacher")
 public class TeacherController {
+    @Autowired
+    private com.exam.repository.DistributedExamRepository distributedExamRepository;
 
     private static final DateTimeFormatter DEADLINE_DISPLAY_FORMAT = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm");
 
@@ -96,13 +99,23 @@ public class TeacherController {
 
         Map<Long, Integer> enrollmentCountBySubject = new HashMap<>();
         for (Subject subject : subjects) {
-            enrollmentCountBySubject.put(subject.getId(), 0);
+            Long subjectId = subject.getId();
+            if (subjectId == null) {
+                continue;
+            }
+            int enrollmentCount = enrolledStudentRepository.findBySubjectId(subjectId).size();
+            enrollmentCountBySubject.put(subjectId, enrollmentCount);
         }
 
         model.addAttribute("subjects", subjects);
         model.addAttribute("enrollmentCountBySubject", enrollmentCountBySubject);
         model.addAttribute("teacherEmail", teacherEmail);
         return "teacher-subjects";
+    }
+
+    @GetMapping("/students")
+    public String studentsAlias() {
+        return "redirect:/teacher/subjects";
     }
 
     @GetMapping("/processed-papers")
@@ -572,11 +585,11 @@ public class TeacherController {
         model.addAttribute("uploadedExams", uploadedExams);
         model.addAttribute("classroomStats", classroomStats);
 
-        List<ExamSubmission> subjectSubmissions = examSubmissionRepository.findAll().stream()
-            .filter(sub -> sub.getSubject() != null && sub.getSubject().equalsIgnoreCase(subject.getSubjectName()))
+        List<DistributedExam> distributedExams = distributedExamRepository.findAll().stream()
+            .filter(item -> item.getSubject() != null && item.getSubject().equalsIgnoreCase(subject.getSubjectName()))
             .toList();
 
-        List<Map<String, Object>> quizDistributionSummary = buildQuizDistributionSummary(subjectSubmissions);
+        List<Map<String, Object>> quizDistributionSummary = buildQuizDistributionSummary(distributedExams);
         int distributedSubmittedCount = quizDistributionSummary.stream()
             .mapToInt(item -> (int) item.getOrDefault("submittedCount", 0))
             .sum();
@@ -605,11 +618,11 @@ public class TeacherController {
             return "redirect:/teacher/subjects";
         }
 
-        List<ExamSubmission> subjectSubmissions = examSubmissionRepository.findAll().stream()
-            .filter(sub -> sub.getSubject() != null && sub.getSubject().equalsIgnoreCase(subject.getSubjectName()))
+        List<DistributedExam> distributedExams = distributedExamRepository.findAll().stream()
+            .filter(item -> item.getSubject() != null && item.getSubject().equalsIgnoreCase(subject.getSubjectName()))
             .toList();
 
-        List<Map<String, Object>> quizDistributionSummary = buildQuizDistributionSummary(subjectSubmissions);
+        List<Map<String, Object>> quizDistributionSummary = buildQuizDistributionSummary(distributedExams);
 
         model.addAttribute("subject", subject);
         model.addAttribute("quizDistributionSummary", quizDistributionSummary);
@@ -639,7 +652,18 @@ public class TeacherController {
 
         String normalizedDeadline = deadline == null ? "" : deadline.trim();
 
-        List<ExamSubmission> subjectSubmissions = examSubmissionRepository.findAll().stream()
+        List<DistributedExam> matchingDistributions = distributedExamRepository.findAll().stream()
+            .filter(item -> item.getSubject() != null && item.getSubject().equalsIgnoreCase(subject.getSubjectName()))
+            .filter(item -> examName != null && examName.equals(item.getExamName()))
+            .filter(item -> activityType != null && activityType.equals(item.getActivityType()))
+            .filter(item -> timeLimit != null && timeLimit.equals(item.getTimeLimit()))
+            .filter(item -> {
+                String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
+                return itemDeadline.equals(normalizedDeadline);
+            })
+            .toList();
+
+        List<ExamSubmission> matchingSubmissions = examSubmissionRepository.findAll().stream()
             .filter(sub -> sub.getSubject() != null && sub.getSubject().equalsIgnoreCase(subject.getSubjectName()))
             .filter(sub -> examName != null && examName.equals(sub.getExamName()))
             .filter(sub -> activityType != null && activityType.equals(sub.getActivityType()))
@@ -654,13 +678,21 @@ public class TeacherController {
             })
             .toList();
 
-        if (subjectSubmissions.isEmpty()) {
+        if (matchingDistributions.isEmpty() && matchingSubmissions.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "No matching distributed quiz batch found.");
             return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
         }
 
-        examSubmissionRepository.deleteAll(subjectSubmissions);
-        redirectAttributes.addFlashAttribute("successMessage", "Distributed quiz batch deleted successfully.");
+        if (!matchingDistributions.isEmpty()) {
+            distributedExamRepository.deleteAll(matchingDistributions);
+        }
+        if (!matchingSubmissions.isEmpty()) {
+            examSubmissionRepository.deleteAll(matchingSubmissions);
+        }
+
+        redirectAttributes.addFlashAttribute("successMessage",
+            "Distributed quiz batch deleted successfully (" + matchingDistributions.size() + " assignment(s), "
+                + matchingSubmissions.size() + " submission(s)).");
         return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
     }
 
@@ -747,58 +779,31 @@ public class TeacherController {
             return "redirect:/teacher/subject-classroom/" + subjectId;
         }
 
-        int created = 0;
+        // Exam distribution: Only mark exam as available for students, do not create ExamSubmission here.
+        // TODO: Implement a proper distribution record if needed (e.g., a DistributedExam entity/table).
+        int distributed = 0;
         for (String studentEmail : selectedStudents) {
             if (studentEmail == null || studentEmail.isBlank()) {
                 continue;
             }
-
-            List<Integer> shuffledIndexes = new ArrayList<>(selectedIndexes);
-            fisherYatesService.shuffle(shuffledIndexes);
-
-            List<Map<String, Object>> distributedQuestions = new ArrayList<>();
-            for (Integer idx : shuffledIndexes) {
-                int questionNumber = idx + 1;
-                Map<String, Object> originalRow = questions.get(idx);
-                Map<String, Object> questionRow = new HashMap<>();
-                questionRow.put("number", questionNumber);
-                questionRow.put("question", String.valueOf(originalRow.getOrDefault("question", "")));
-                questionRow.put("choices", originalRow.getOrDefault("choices", new ArrayList<>()));
-                questionRow.put("difficulty", difficultiesMap.getOrDefault(String.valueOf(questionNumber), "Medium"));
-                questionRow.put("answer", answerKeyMap.getOrDefault(String.valueOf(questionNumber), ""));
-                distributedQuestions.add(questionRow);
-            }
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("examId", paper.getExamId());
-            payload.put("distributedAt", LocalDateTime.now().toString());
-            payload.put("deadline", deadline == null ? "" : deadline);
-            payload.put("questions", distributedQuestions);
-
-            ExamSubmission submission = new ExamSubmission();
-            submission.setStudentEmail(studentEmail.trim());
-            submission.setExamName(paper.getExamName());
-            submission.setSubject(paper.getSubject());
-            submission.setActivityType(paper.getActivityType());
-            submission.setScore(0);
-            submission.setTotalQuestions(distributedQuestions.size());
-            submission.setPercentage(0.0);
-            submission.setCurrentQuestion(1);
-            submission.setDifficulty("Mixed");
-            submission.setTimeLimit((timeLimit != null && timeLimit > 0) ? timeLimit : 60);
-            // Do NOT set submittedAt here; only set when student submits
-            submission.setResultsReleased(false);
-            submission.setGraded(false);
-            submission.setAnswerDetailsJson(gson.toJson(payload));
-
-            examSubmissionRepository.save(submission);
-            created++;
+            DistributedExam distExam = new DistributedExam();
+            distExam.setStudentEmail(studentEmail.trim());
+            distExam.setExamId(paper.getExamId());
+            distExam.setSubject(subject.getSubjectName());
+            distExam.setExamName(paper.getExamName());
+            distExam.setActivityType(paper.getActivityType());
+            distExam.setTimeLimit((timeLimit != null && timeLimit > 0) ? timeLimit : 60);
+            distExam.setDeadline(deadline == null ? "" : deadline);
+            distExam.setDistributedAt(java.time.LocalDateTime.now());
+            distExam.setSubmitted(false);
+            distributedExamRepository.save(distExam);
+            distributed++;
         }
 
-        if (created == 0) {
+        if (distributed == 0) {
             redirectAttributes.addFlashAttribute("errorMessage", "No valid students selected for distribution.");
         } else {
-            redirectAttributes.addFlashAttribute("successMessage", "Quiz distributed to " + created + " student(s).");
+            redirectAttributes.addFlashAttribute("successMessage", "Quiz distributed to " + distributed + " student(s).");
         }
         return "redirect:/teacher/subject-classroom/" + subjectId;
     }
@@ -913,34 +918,34 @@ public class TeacherController {
         return text == null ? "" : text.toLowerCase().trim();
     }
 
-    private List<Map<String, Object>> buildQuizDistributionSummary(List<ExamSubmission> submissions) {
-        List<ExamSubmission> sorted = new ArrayList<>(submissions == null ? new ArrayList<>() : submissions);
-        sorted.sort(Comparator.comparing(ExamSubmission::getSubmittedAt,
+    private List<Map<String, Object>> buildQuizDistributionSummary(List<DistributedExam> distributedExams) {
+        List<DistributedExam> sorted = new ArrayList<>(distributedExams == null ? new ArrayList<>() : distributedExams);
+        sorted.sort(Comparator.comparing(DistributedExam::getDistributedAt,
             Comparator.nullsLast(Comparator.reverseOrder())));
 
         Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
-        for (ExamSubmission submission : sorted) {
-            if (submission == null || submission.getExamName() == null || submission.getExamName().isBlank()) {
+        for (DistributedExam distributedExam : sorted) {
+            if (distributedExam == null || distributedExam.getExamName() == null || distributedExam.getExamName().isBlank()) {
                 continue;
             }
 
-            Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
-            String deadlineRaw = payload.get("deadline") == null ? "" : String.valueOf(payload.get("deadline"));
-            String groupKey = submission.getExamName() + "|"
-                + String.valueOf(submission.getActivityType()) + "|"
-                + String.valueOf(submission.getTimeLimit()) + "|"
+            String deadlineRaw = distributedExam.getDeadline() == null ? "" : distributedExam.getDeadline();
+            String groupKey = distributedExam.getExamName() + "|"
+                + String.valueOf(distributedExam.getActivityType()) + "|"
+                + String.valueOf(distributedExam.getTimeLimit()) + "|"
                 + deadlineRaw;
 
             Map<String, Object> row = grouped.computeIfAbsent(groupKey, key -> {
                 Map<String, Object> created = new HashMap<>();
-                created.put("examName", submission.getExamName());
-                created.put("subject", submission.getSubject() == null ? "" : submission.getSubject());
-                created.put("activityType", submission.getActivityType() == null ? "Quiz" : submission.getActivityType());
-                created.put("timeLimit", submission.getTimeLimit() == null ? 60 : submission.getTimeLimit());
+                Integer safeTimeLimit = distributedExam.getTimeLimit();
+                created.put("examName", distributedExam.getExamName());
+                created.put("subject", distributedExam.getSubject() == null ? "" : distributedExam.getSubject());
+                created.put("activityType", distributedExam.getActivityType() == null ? "Quiz" : distributedExam.getActivityType());
+                created.put("timeLimit", safeTimeLimit != null ? safeTimeLimit : 60);
                 created.put("deadline", formatDeadline(deadlineRaw));
-                created.put("filterExamName", submission.getExamName());
-                created.put("filterActivityType", submission.getActivityType());
-                created.put("filterTimeLimit", submission.getTimeLimit());
+                created.put("filterExamName", distributedExam.getExamName());
+                created.put("filterActivityType", distributedExam.getActivityType());
+                created.put("filterTimeLimit", distributedExam.getTimeLimit());
                 created.put("filterDeadline", deadlineRaw == null ? "" : deadlineRaw);
                 created.put("assignedCount", 0);
                 created.put("submittedCount", 0);
@@ -951,7 +956,7 @@ public class TeacherController {
             int assigned = (int) row.getOrDefault("assignedCount", 0) + 1;
             row.put("assignedCount", assigned);
 
-            if (isSubmissionCompleted(submission)) {
+            if (distributedExam.isSubmitted()) {
                 int submittedCount = (int) row.getOrDefault("submittedCount", 0) + 1;
                 row.put("submittedCount", submittedCount);
             }

@@ -36,8 +36,9 @@
             border-bottom: 2px solid #d4a32a;
         }
         .mq-section-header {
-            background: linear-gradient(135deg, #221f1f 0%, #3a2e2e 100%);
-            color: #fff;
+            background: #fcfaf7;
+            color: var(--eac-maroon);
+            border-bottom: 1px solid #eadfce;
         }
         .question-card {
             transition: all 0.3s ease;
@@ -198,6 +199,36 @@
             background: #ced4da;
             margin: 0 0.15rem;
         }
+        .editor-toolbar .btn[data-editor-action="pick-text-color"] {
+            color: #2563eb;
+            border-color: #93c5fd;
+            background: #eff6ff;
+        }
+        .editor-toolbar .btn[data-editor-action="pick-text-color"]:hover {
+            color: #1d4ed8;
+            border-color: #60a5fa;
+            background: #dbeafe;
+        }
+        .editor-toolbar .btn[data-editor-action="pick-highlight"] {
+            color: #d97706;
+            border-color: #fcd34d;
+            background: #fff7ed;
+        }
+        .editor-toolbar .btn[data-editor-action="pick-highlight"]:hover {
+            color: #b45309;
+            border-color: #fbbf24;
+            background: #ffedd5;
+        }
+        .editor-toolbar .btn[data-editor-cmd="remove-bg"] {
+            color: #b45309;
+            border-color: #fcd34d;
+            background: #fff7ed;
+        }
+        .editor-toolbar .btn[data-editor-cmd="clear"] {
+            color: #991b1b;
+            border-color: #fca5a5;
+            background: #fef2f2;
+        }
         .editor-block .rich-editor {
             border-top-left-radius: 0;
             border-top-right-radius: 0;
@@ -209,9 +240,40 @@
             gap: 0.5rem;
             align-items: center;
             margin-bottom: 0.5rem;
+            padding: 0.1rem;
+            border-radius: 10px;
+        }
+        .choice-input-row.is-correct-choice {
+            background: #ecfdf3;
+            border: 1px solid #86efac;
         }
         .choice-input-row .form-control {
             flex: 1;
+        }
+        .choice-correct-btn {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #22c55e;
+            color: #16a34a;
+            background: #fff;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        .choice-correct-btn.is-correct,
+        .choice-correct-btn:hover {
+            background: #16a34a;
+            color: #fff;
+            border-color: #16a34a;
+        }
+        .choice-correct-btn i {
+            color: inherit;
+            font-size: 1rem;
+            font-weight: 700;
+            line-height: 1;
         }
         .choice-remove-btn {
             width: 32px;
@@ -291,6 +353,55 @@
         .question-media sub {
             bottom: -0.2em;
         }
+
+        .manage-questions-page {
+            max-width: 100%;
+            padding-left: clamp(0.75rem, 1.5vw, 1.75rem);
+            padding-right: clamp(0.75rem, 1.5vw, 1.75rem);
+        }
+
+        @media (min-width: 992px) {
+            .manage-questions-page {
+                display: grid;
+                grid-template-columns: minmax(360px, 40%) minmax(0, 60%);
+                gap: 1rem 1.25rem;
+                align-items: start;
+            }
+
+            .manage-questions-page > .row {
+                margin-left: 0;
+                margin-right: 0;
+            }
+
+            .manage-questions-page > .row > [class*="col-"] {
+                padding-left: 0;
+                padding-right: 0;
+            }
+
+            .manage-questions-page > .row:first-child {
+                grid-column: 1 / -1;
+            }
+
+            #addQuestionSection {
+                grid-column: 1;
+                margin-bottom: 0 !important;
+            }
+
+            .manage-questions-page > .alert,
+            .mq-all-questions-row {
+                grid-column: 2;
+            }
+
+            .mq-all-questions-row {
+                margin-top: 0;
+            }
+        }
+
+        @media (min-width: 1400px) {
+            .manage-questions-page {
+                grid-template-columns: minmax(390px, 38%) minmax(0, 62%);
+            }
+        }
     </style>
 </head>
 <body class="homepage-page">
@@ -300,7 +411,7 @@
 
     <!-- Main content area -->
     <div class="teacher-content-wrapper">
-<div class="container">
+<div class="container-fluid manage-questions-page">
     <div class="row mb-4">
         <div class="col-md-12">
             <div class="card mq-card">
@@ -416,10 +527,6 @@
                                         <option value="36pt">36</option>
                                     </select>
                                     <span class="toolbar-divider"></span>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="bold" title="Bold"><i class="bi bi-type-bold"></i></button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="underline" title="Underline"><i class="bi bi-type-underline"></i></button>
-                                    <span class="toolbar-divider"></span>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="insertUnorderedList" title="Bulleted List"><i class="bi bi-list-ul"></i></button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="insertOrderedList" title="Numbered List"><i class="bi bi-list-ol"></i></button>
                                     <span class="toolbar-divider"></span>
@@ -468,6 +575,9 @@
                                     <i class="bi bi-plus-circle"></i> Add Choice
                                 </button>
                             </div>
+                            <small class="form-text text-muted d-block mb-2" id="addAnswerHint">
+                                <i class="bi bi-check-circle me-1"></i>Check one choice as the correct answer.
+                            </small>
                             <div id="choicesInputs"></div>
                             <textarea class="form-control d-none" name="choicesText" id="addChoicesText"></textarea>
                             <small class="form-text text-muted">Add at least 2 choices for multiple choice questions.</small>
@@ -494,11 +604,12 @@
                         </div>
                         
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Correct Answer *</label>
-                                <input type="text" class="form-control" name="answer" id="addAnswerInput"
-                                       placeholder="e.g., A, B, C, D or full answer text" required>
-                                <small class="form-text text-muted" id="addAnswerHint">Enter the letter or full text of the correct answer</small>
+                            <input type="hidden" name="answer" id="addAnswerInput">
+
+                            <div class="col-md-6 mb-3" id="openEndedHintContainer" style="display:none;">
+                                <label class="form-label fw-bold">Correct Answer</label>
+                                <div class="form-control text-muted" style="background:#f8fafc;">Manual checking by professor</div>
+                                <small class="form-text text-muted">Teacher will grade this question manually.</small>
                             </div>
                             
                             <div class="col-md-6 mb-3">
@@ -533,7 +644,7 @@
     </div>
 
     <!-- Existing Questions List -->
-    <div class="row">
+    <div class="row mq-all-questions-row">
         <div class="col-md-12">
             <div class="card mq-card">
                 <div class="card-header mq-section-header d-flex justify-content-between align-items-center">
@@ -637,10 +748,6 @@
                                                         <option value="32pt">32</option>
                                                         <option value="36pt">36</option>
                                                     </select>
-                                                    <span class="toolbar-divider"></span>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="bold" title="Bold"><i class="bi bi-type-bold"></i></button>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="underline" title="Underline"><i class="bi bi-type-underline"></i></button>
                                                     <span class="toolbar-divider"></span>
                                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="insertUnorderedList" title="Bulleted List"><i class="bi bi-list-ul"></i></button>
                                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-editor-cmd="insertOrderedList" title="Numbered List"><i class="bi bi-list-ol"></i></button>
@@ -775,21 +882,28 @@
         const choicesText = document.getElementById('addChoicesText');
         const answerInput = document.getElementById('addAnswerInput');
         const answerHint = document.getElementById('addAnswerHint');
+        const openEndedHint = document.getElementById('openEndedHintContainer');
 
-        if (!typeSelect || !choicesContainer || !choicesText || !answerInput || !answerHint) return;
+        if (!typeSelect || !choicesContainer || !choicesText || !answerInput || !answerHint || !openEndedHint) return;
 
         const isOpenEnded = typeSelect.value === 'OPEN_ENDED';
         choicesContainer.style.display = isOpenEnded ? 'none' : '';
-        answerInput.required = !isOpenEnded;
-        answerInput.readOnly = isOpenEnded;
+        openEndedHint.style.display = isOpenEnded ? '' : 'none';
         if (isOpenEnded) {
             choicesText.value = '';
-            answerInput.value = '';
-            answerInput.placeholder = 'Not required for open-ended questions';
-            answerHint.textContent = 'Teacher will grade this question manually.';
+            answerInput.value = 'MANUAL_GRADE';
+            document.querySelectorAll('#choicesInputs .choice-input-row').forEach(row => {
+                row.classList.remove('is-correct-choice');
+                const btn = row.querySelector('.choice-correct-btn');
+                if (btn) {
+                    btn.classList.remove('is-correct');
+                    btn.setAttribute('aria-pressed', 'false');
+                }
+            });
+            answerHint.innerHTML = '<i class="bi bi-check-circle me-1"></i>Open-ended questions are graded manually by professor.';
         } else {
-            answerInput.placeholder = 'e.g., A, B, C, D or full answer text';
-            answerHint.textContent = 'Enter the letter or full text of the correct answer';
+            answerHint.innerHTML = '<i class="bi bi-check-circle me-1"></i>Check one choice as the correct answer.';
+            syncAddChoicesText();
         }
     }
 
@@ -854,11 +968,25 @@
 
     function syncAddChoicesText() {
         const hidden = document.getElementById('addChoicesText');
+        const answerInput = document.getElementById('addAnswerInput');
         if (!hidden) return;
-        const values = Array.from(document.querySelectorAll('.add-choice-input'))
+
+        const rows = Array.from(document.querySelectorAll('#choicesInputs .choice-input-row'));
+        const values = rows
+            .map(row => row.querySelector('.add-choice-input'))
+            .filter(Boolean)
             .map(input => (input.value || '').trim())
             .filter(Boolean);
+
         hidden.value = values.join('\n');
+
+        if (answerInput) {
+            const selectedRow = rows.find(row => row.classList.contains('is-correct-choice'));
+            const selectedInput = selectedRow ? selectedRow.querySelector('.add-choice-input') : null;
+            const selectedValue = selectedInput ? (selectedInput.value || '').trim() : '';
+            const isOpenEnded = document.getElementById('addQuestionType')?.value === 'OPEN_ENDED';
+            answerInput.value = isOpenEnded ? 'MANUAL_GRADE' : selectedValue;
+        }
     }
 
     function addChoiceInput(value = '') {
@@ -867,6 +995,27 @@
 
         const row = document.createElement('div');
         row.className = 'choice-input-row';
+
+        const correctBtn = document.createElement('button');
+        correctBtn.type = 'button';
+        correctBtn.className = 'btn btn-sm choice-correct-btn';
+        correctBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+        correctBtn.title = 'Mark as Correct Answer';
+        correctBtn.setAttribute('aria-pressed', 'false');
+        correctBtn.addEventListener('click', function () {
+            document.querySelectorAll('#choicesInputs .choice-input-row').forEach(otherRow => {
+                otherRow.classList.remove('is-correct-choice');
+                const otherBtn = otherRow.querySelector('.choice-correct-btn');
+                if (otherBtn) {
+                    otherBtn.classList.remove('is-correct');
+                    otherBtn.setAttribute('aria-pressed', 'false');
+                }
+            });
+            row.classList.add('is-correct-choice');
+            correctBtn.classList.add('is-correct');
+            correctBtn.setAttribute('aria-pressed', 'true');
+            syncAddChoicesText();
+        });
 
         const input = document.createElement('input');
         input.type = 'text';
@@ -885,6 +1034,7 @@
             syncAddChoicesText();
         });
 
+        row.appendChild(correctBtn);
         row.appendChild(input);
         row.appendChild(removeBtn);
         container.appendChild(row);
@@ -1096,6 +1246,80 @@
             updateAllToolbarStatuses();
         }
 
+        function sanitizePastedHtml(rawHtml) {
+            if (!rawHtml) return '';
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, 'text/html');
+            if (!doc || !doc.body) return '';
+
+            doc.body.querySelectorAll('script, style, meta, link, iframe, object, embed').forEach(el => el.remove());
+
+            doc.body.querySelectorAll('mark').forEach(markEl => {
+                const span = doc.createElement('span');
+                span.innerHTML = markEl.innerHTML;
+                markEl.replaceWith(span);
+            });
+
+            doc.body.querySelectorAll('*').forEach(el => {
+                Array.from(el.attributes).forEach(attr => {
+                    const attrName = (attr.name || '').toLowerCase();
+                    if (attrName.startsWith('on')) {
+                        el.removeAttribute(attr.name);
+                    }
+                    if (attrName === 'bgcolor') {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+
+                const styleValue = el.getAttribute('style');
+                if (!styleValue) {
+                    return;
+                }
+
+                const filtered = styleValue
+                    .split(';')
+                    .map(rule => rule.trim())
+                    .filter(Boolean)
+                    .filter(rule => {
+                        const property = rule.split(':')[0]?.trim().toLowerCase() || '';
+                        return property !== 'background'
+                            && property !== 'background-color'
+                            && property !== 'background-image'
+                            && property !== 'background-repeat'
+                            && property !== 'background-position'
+                            && property !== 'background-size'
+                            && property !== 'mso-highlight';
+                    });
+
+                if (filtered.length > 0) {
+                    el.setAttribute('style', filtered.join('; '));
+                } else {
+                    el.removeAttribute('style');
+                }
+            });
+
+            return doc.body.innerHTML;
+        }
+
+        function insertEditorContent(editor, htmlContent, plainTextFallback) {
+            if (!editor) return;
+            focusEditor(editor);
+            restoreSelection(editor);
+
+            if (htmlContent && htmlContent.trim()) {
+                document.execCommand('insertHTML', false, htmlContent);
+            } else if (plainTextFallback) {
+                document.execCommand('insertText', false, plainTextFallback);
+            }
+
+            saveSelection(editor);
+            if (editor.id === 'questionEditor') {
+                updateMathPreview();
+            }
+            updateAllToolbarStatuses();
+        }
+
         document.querySelectorAll('.editor-toolbar [data-editor-font-family]').forEach(selectEl => {
             selectEl.addEventListener('change', function () {
                 const toolbar = this.closest('.editor-toolbar');
@@ -1106,6 +1330,14 @@
         });
 
         document.querySelectorAll('.rich-editor').forEach(editor => {
+            editor.addEventListener('paste', function (event) {
+                event.preventDefault();
+                const clipboard = event.clipboardData || window.clipboardData;
+                const rawHtml = clipboard ? clipboard.getData('text/html') : '';
+                const plainText = clipboard ? clipboard.getData('text/plain') : '';
+                const cleanHtml = sanitizePastedHtml(rawHtml);
+                insertEditorContent(editor, cleanHtml, plainText);
+            });
             editor.addEventListener('mouseup', function () {
                 saveSelection(editor);
                 updateAllToolbarStatuses();
@@ -1225,6 +1457,18 @@
                         event.preventDefault();
                         alert('Add at least 2 choices for multiple choice questions.');
                         return;
+                    }
+
+                    const answerInput = document.getElementById('addAnswerInput');
+                    if (!answerInput || !(answerInput.value || '').trim()) {
+                        event.preventDefault();
+                        alert('Check one choice as the correct answer.');
+                        return;
+                    }
+                } else {
+                    const answerInput = document.getElementById('addAnswerInput');
+                    if (answerInput) {
+                        answerInput.value = 'MANUAL_GRADE';
                     }
                 }
 
