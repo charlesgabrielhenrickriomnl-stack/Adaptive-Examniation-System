@@ -26,7 +26,7 @@ body::before {
     content: "";
     position: fixed;
     inset: 0;
-    background-image: url('/images/front-view-kid-cheating-school.jpg');
+    background-image: url('/images/front-view-kid-cheating-school1.jpg');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -278,12 +278,64 @@ body::before {
     position: fixed;
     right: 20px;
     bottom: 16px;
-    width: 138px;
+    width: 122px;
     height: auto;
     opacity: 0.92;
     z-index: 10;
     pointer-events: none;
     user-select: none;
+}
+
+.auth-corner-iso {
+    position: fixed;
+    right: 136px;
+    bottom: 22px;
+    width: 108px;
+    height: auto;
+    opacity: 0.92;
+    z-index: 10;
+    pointer-events: none;
+    user-select: none;
+}
+
+.login-popup-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 1200;
+}
+
+.login-popup-alert {
+    position: relative;
+    margin: 0;
+    min-width: 320px;
+    max-width: min(90vw, 520px);
+    padding: 14px 44px 14px 16px;
+    border-radius: 12px;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.25);
+    text-align: left;
+}
+
+.login-popup-close {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    border: none;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.55);
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.login-popup-close:hover {
+    color: rgba(0, 0, 0, 0.85);
 }
 
 /* Alerts spacing and centering inside the login panel */
@@ -346,9 +398,15 @@ body::before {
     }
 
     .auth-corner-seal {
-        width: 104px;
+        width: 92px;
         right: 12px;
         bottom: 12px;
+    }
+
+    .auth-corner-iso {
+        width: 82px;
+        right: 96px;
+        bottom: 16px;
     }
 
     .login-page-president {
