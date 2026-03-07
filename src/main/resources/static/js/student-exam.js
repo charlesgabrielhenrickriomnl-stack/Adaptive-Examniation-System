@@ -7,6 +7,16 @@
 let exam = [];
 let difficulties = [];
 let examInfo = {};
+let examItems = [];
+let askedOrder = [];
+let sourceNumberToItemIndex = {};
+let adaptiveEnabled = false;
+let adaptiveState = {
+    theta: 0,
+    standardError: 999,
+    itemsAnswered: 0,
+    correctAnswers: 0
+};
 let totalQuestions = 0;
 let currentPage = 0;
 let answers = {};
@@ -20,6 +30,7 @@ let tabSwitchCount = 0;
 let isExamActive = true;
 let isSubmitting = false;
 let isNavigationLocked = false;
+const CHOICE_LABEL_REGEX = '(?:[A-Z]{1,3}|\\d{1,4})';
 
 function decodeHtmlEntities(value) {
     const textarea = document.createElement('textarea');
@@ -90,6 +101,8 @@ function escapeHtml(value) {
 function toPlainQuestionText(value) {
     return String(value || '')
         .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<sup[^>]*>\s*(.*?)\s*<\/sup>/gi, '^$1')
+        .replace(/<sub[^>]*>\s*(.*?)\s*<\/sub>/gi, '_$1')
         .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, '\n')
         .replace(/<li[^>]*>/gi, '')
         .replace(/<[^>]+>/g, ' ')
@@ -102,7 +115,8 @@ function toPlainQuestionText(value) {
 }
 
 function parseChoiceLine(line) {
-    const match = String(line || '').match(/^\s*(?:\(?([A-Z])\)|([A-Z])[.)])\s*(.+)$/i);
+    const pattern = new RegExp(`^\\s*(?:\\(?(${CHOICE_LABEL_REGEX})\\)|(${CHOICE_LABEL_REGEX})[.)])\\s*(.+)$`, 'i');
+    const match = String(line || '').match(pattern);
     if (!match) {
         return null;
     }
@@ -135,7 +149,7 @@ function extractQuestionParts(rawQuestion) {
         }
     }
 
-    const markerPattern = /(?:\(\s*([A-Z])\s*\)|\b([A-Z])[.)])\s*/gi;
+    const markerPattern = new RegExp(`(?:\\(\\s*(${CHOICE_LABEL_REGEX})\\s*\\)|\\b(${CHOICE_LABEL_REGEX})[.)])\\s*`, 'gi');
     const markers = [];
     let match;
     while ((match = markerPattern.exec(plain)) !== null) {
@@ -183,6 +197,128 @@ function extractQuestionParts(rawQuestion) {
     };
 }
 
+function getChoiceLabel(index) {
+    if (!Number.isInteger(index) || index < 0) {
+        return 'A';
+    }
+
+    let current = index;
+    let label = '';
+    do {
+        const remainder = current % 26;
+        label = String.fromCharCode(65 + remainder) + label;
+        current = Math.floor(current / 26) - 1;
+    } while (current >= 0);
+
+    return label;
+}
+
+function getDefaultIrtParamsByDifficulty(difficulty) {
+    const normalized = String(difficulty || 'Medium').trim().toLowerCase();
+    if (normalized.startsWith('easy')) {
+        return { a: 1.0, b: -0.8, c: 0.2 };
+    }
+    if (normalized.startsWith('hard')) {
+        return { a: 1.4, b: 0.8, c: 0.2 };
+    }
+    return { a: 1.2, b: 0.0, c: 0.2 };
+}
+
+function normalizeExamItem(rawItem, fallbackDifficulty, index) {
+    const isObject = rawItem && typeof rawItem === 'object' && !Array.isArray(rawItem);
+    const questionRaw = isObject ? (rawItem.question || rawItem.text || '') : String(rawItem || '');
+    const difficulty = isObject
+        ? String(rawItem.difficulty || fallbackDifficulty || 'Medium')
+        : String(fallbackDifficulty || 'Medium');
+    const defaults = getDefaultIrtParamsByDifficulty(difficulty);
+
+    const sourceQuestionNumberRaw = isObject ? Number(rawItem.sourceQuestionNumber) : NaN;
+    const sourceQuestionNumber = Number.isInteger(sourceQuestionNumberRaw) && sourceQuestionNumberRaw > 0
+        ? sourceQuestionNumberRaw
+        : index + 1;
+
+    const questionText = normalizeQuestionMarkup(questionRaw);
+    const declaredType = isObject ? String(rawItem.questionType || '').toUpperCase() : '';
+    const openEnded = declaredType === 'OPEN_ENDED' || questionText.includes('[TEXT_INPUT]');
+
+    const item = {
+        sourceQuestionNumber,
+        question: questionText,
+        difficulty,
+        questionType: openEnded ? 'OPEN_ENDED' : 'MULTIPLE_CHOICE',
+        irtA: isObject && Number.isFinite(Number(rawItem.irtA)) ? Number(rawItem.irtA) : defaults.a,
+        irtB: isObject && Number.isFinite(Number(rawItem.irtB)) ? Number(rawItem.irtB) : defaults.b,
+        irtC: isObject && Number.isFinite(Number(rawItem.irtC)) ? Number(rawItem.irtC) : defaults.c
+    };
+
+    item.irtA = Math.max(0.3, Math.min(3.0, item.irtA));
+    item.irtB = Math.max(-3.0, Math.min(3.0, item.irtB));
+    item.irtC = Math.max(0.0, Math.min(0.35, item.irtC));
+    return item;
+}
+
+function getCurrentItemIndex() {
+    if (!askedOrder.length) {
+        return 0;
+    }
+    const safePage = Math.max(0, Math.min(currentPage, askedOrder.length - 1));
+    const index = askedOrder[safePage];
+    return Number.isInteger(index) ? index : 0;
+}
+
+function findFirstUnaskedItemIndex() {
+    const used = new Set(askedOrder);
+    for (let index = 0; index < examItems.length; index++) {
+        if (!used.has(index)) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+async function requestAdaptiveNext() {
+    const distributedExamIdValue = examInfo && examInfo.distributedExamId ? String(examInfo.distributedExamId) : '';
+    if (!distributedExamIdValue) {
+        return { ok: true, done: true };
+    }
+
+    const askedSourceNumbers = askedOrder
+        .map(index => examItems[index])
+        .filter(Boolean)
+        .map(item => Number(item.sourceQuestionNumber))
+        .filter(value => Number.isInteger(value) && value > 0);
+
+    const params = new URLSearchParams();
+    params.append('distributedExamId', distributedExamIdValue);
+    params.append('askedOrder', JSON.stringify(askedSourceNumbers));
+
+    Object.entries(answers).forEach(([key, value]) => {
+        params.append(key, String(value || ''));
+    });
+
+    const response = await fetch('/student/adaptive-next', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        },
+        credentials: 'same-origin',
+        body: params.toString()
+    });
+
+    if (!response.ok) {
+        throw new Error(`Adaptive next request failed (${response.status})`);
+    }
+
+    const payload = await response.json();
+    if (payload && typeof payload === 'object') {
+        adaptiveState.theta = Number(payload.theta || adaptiveState.theta || 0);
+        adaptiveState.standardError = Number(payload.standardError || adaptiveState.standardError || 999);
+        adaptiveState.itemsAnswered = Number(payload.itemsAnswered || adaptiveState.itemsAnswered || 0);
+        adaptiveState.correctAnswers = Number(payload.correctAnswers || adaptiveState.correctAnswers || 0);
+    }
+    return payload;
+}
+
 /**
  * Initialize the exam from Thymeleaf data
  */
@@ -190,7 +326,34 @@ function initializeExam(examData, difficultiesData, examInfoData) {
     exam = examData;
     difficulties = difficultiesData;
     examInfo = examInfoData;
-    totalQuestions = exam.length;
+
+    const examArray = Array.isArray(examData) ? examData : [];
+    const difficultyArray = Array.isArray(difficultiesData) ? difficultiesData : [];
+    examItems = examArray.map((item, index) => normalizeExamItem(item, difficultyArray[index], index));
+    totalQuestions = examItems.length;
+    sourceNumberToItemIndex = {};
+    examItems.forEach((item, index) => {
+        sourceNumberToItemIndex[String(item.sourceQuestionNumber)] = index;
+    });
+
+    adaptiveEnabled = Boolean(examInfo && examInfo.adaptiveEnabled);
+    askedOrder = [];
+
+    if (adaptiveEnabled && totalQuestions > 0) {
+        const firstSourceNumber = Number(examInfo.adaptiveFirstSourceQuestionNumber);
+        const firstIndex = Number.isInteger(firstSourceNumber)
+            ? sourceNumberToItemIndex[String(firstSourceNumber)]
+            : undefined;
+        askedOrder.push(Number.isInteger(firstIndex) ? firstIndex : 0);
+    } else {
+        askedOrder = examItems.map((_, index) => index);
+    }
+
+    if (!askedOrder.length && totalQuestions > 0) {
+        askedOrder.push(0);
+    }
+
+    currentPage = 0;
     
     loadSavedAnswers();
     displayQuestion();
@@ -218,6 +381,19 @@ function appendExamMetaInputs(form) {
         distributedExamIdInput.name = 'distributedExamId';
         distributedExamIdInput.value = distributedExamIdValue;
         form.appendChild(distributedExamIdInput);
+    }
+
+    if (askedOrder.length > 0) {
+        const adaptiveOrderInput = document.createElement('input');
+        adaptiveOrderInput.type = 'hidden';
+        adaptiveOrderInput.name = 'adaptiveQuestionOrder';
+        adaptiveOrderInput.value = JSON.stringify(
+            askedOrder
+                .map(index => examItems[index])
+                .filter(Boolean)
+                .map(item => item.sourceQuestionNumber)
+        );
+        form.appendChild(adaptiveOrderInput);
     }
 }
 
@@ -296,12 +472,20 @@ function showSaveIndicator() {
  * Display current question
  */
 function displayQuestion() {
-    let question = normalizeQuestionMarkup(exam[currentPage]);
+    if (!examItems.length) {
+        document.getElementById('questionContainer').innerHTML = '<div class="alert alert-warning">No questions available for this exam.</div>';
+        return;
+    }
+
+    const itemIndex = getCurrentItemIndex();
+    const activeItem = examItems[itemIndex] || {};
+    let question = normalizeQuestionMarkup(activeItem.question || '');
     const questionNumber = currentPage + 1;
-    
-    // Remove [TEXT_INPUT] prefix if present
-    const isTextInput = question.includes('[TEXT_INPUT]');
-    if (isTextInput) {
+
+    // Use explicit type flag first, then marker fallback.
+    const declaredOpenEnded = String(activeItem.questionType || '').toUpperCase() === 'OPEN_ENDED';
+    const hasTextInputMarker = question.includes('[TEXT_INPUT]');
+    if (hasTextInputMarker) {
         question = question.replace('[TEXT_INPUT]', '').trim();
     }
     
@@ -327,6 +511,11 @@ function displayQuestion() {
     question = question.replace(/\[IMG:[^\]]+\]/g, '').trim();
     question = question.replace(/\[VID:[^\]]+\]/g, '').trim();
 
+    const parsedQuestion = extractQuestionParts(question);
+    const hasRenderableChoices = Array.isArray(parsedQuestion.choices) && parsedQuestion.choices.length >= 2;
+    // Final safety net: if no choices are detected, render as open-ended so students always have an input field.
+    const isTextInput = declaredOpenEnded || hasTextInputMarker || !hasRenderableChoices;
+
     // Build HTML for any extracted images
     let imagesHtml = '';
     if (imageUrls.length > 0) {
@@ -349,7 +538,8 @@ function displayQuestion() {
     let html = `<h5 class="mb-4">Question ${questionNumber}</h5>`;
     
     if (isTextInput) {
-        const safeQuestionHtml = sanitizeQuestionHtml(question);
+        const textPrompt = parsedQuestion.stem || question;
+        const safeQuestionHtml = sanitizeQuestionHtml(textPrompt);
         // Text-input question (prefix hidden from student)
         html += `
             <p class="lead mb-2">${safeQuestionHtml}</p>
@@ -365,7 +555,6 @@ function displayQuestion() {
         `;
     } else {
         // Multiple-choice question
-        const parsedQuestion = extractQuestionParts(question);
         const questionText = parsedQuestion.stem || '';
         const choices = parsedQuestion.choices;
         const safeQuestionHtml = sanitizeQuestionHtml(questionText);
@@ -377,7 +566,7 @@ function displayQuestion() {
         `;
         
         choices.forEach((choice, idx) => {
-            const choiceLetter = choice.label || String.fromCharCode(65 + idx);
+            const choiceLetter = choice.label || getChoiceLabel(idx);
             const choiceText = String(choice.text || '').trim();
             if (!choiceText) {
                 return;
@@ -451,7 +640,8 @@ function selectAnswerEncoded(questionNum, encodedAnswer, button) {
  */
 function updateProgress() {
     const questionNum = currentPage + 1;
-    const percentage = (questionNum / totalQuestions) * 100;
+    const safeTotal = totalQuestions > 0 ? totalQuestions : 1;
+    const percentage = (questionNum / safeTotal) * 100;
     
     document.getElementById('progressText').textContent = `Question ${questionNum} of ${totalQuestions}`;
     document.getElementById('progressBar').style.width = percentage + '%';
@@ -464,8 +654,9 @@ function updateProgress() {
 function updateDifficultyBadge() {
     const difficultyBadge = document.getElementById('difficultyBadge');
     if (!difficultyBadge) return;
-    
-    const currentDifficulty = difficulties[currentPage] || 'Medium';
+
+    const currentItem = examItems[getCurrentItemIndex()] || {};
+    const currentDifficulty = currentItem.difficulty || difficulties[currentPage] || 'Medium';
     
     // Remove all difficulty classes
     difficultyBadge.classList.remove('difficulty-easy', 'difficulty-medium', 'difficulty-hard');
@@ -496,13 +687,78 @@ function navigateBack() {
 /**
  * Navigate to next question or submit
  */
-function navigateNext() {
+async function navigateNext() {
     if (currentPage < totalQuestions - 1) {
-        currentPage++;
-        displayQuestion();
-    } else {
-        submitExam();
+        if (currentPage < askedOrder.length - 1) {
+            currentPage++;
+            displayQuestion();
+            return;
+        }
+
+        if (adaptiveEnabled && askedOrder.length < totalQuestions) {
+            const nextBtn = document.getElementById('nextBtn');
+            if (nextBtn) {
+                nextBtn.disabled = true;
+                nextBtn.textContent = 'Loading...';
+            }
+
+            try {
+                const payload = await requestAdaptiveNext();
+                if (payload && payload.done) {
+                    const fallbackIndex = findFirstUnaskedItemIndex();
+                    if (fallbackIndex >= 0 && !askedOrder.includes(fallbackIndex)) {
+                        askedOrder.push(fallbackIndex);
+                        currentPage++;
+                        displayQuestion();
+                        return;
+                    }
+                    submitExam();
+                    return;
+                }
+
+                let nextIndex = -1;
+                const nextSourceNumber = Number(payload && payload.nextSourceQuestionNumber);
+                if (Number.isInteger(nextSourceNumber)) {
+                    const mappedIndex = sourceNumberToItemIndex[String(nextSourceNumber)];
+                    if (Number.isInteger(mappedIndex)) {
+                        nextIndex = mappedIndex;
+                    }
+                }
+
+                if (nextIndex < 0) {
+                    nextIndex = findFirstUnaskedItemIndex();
+                }
+
+                if (nextIndex >= 0 && !askedOrder.includes(nextIndex)) {
+                    askedOrder.push(nextIndex);
+                    currentPage++;
+                    displayQuestion();
+                    return;
+                }
+            } catch (error) {
+                console.warn('Adaptive next question failed, falling back to first unasked item.', error);
+                const fallbackIndex = findFirstUnaskedItemIndex();
+                if (fallbackIndex >= 0 && !askedOrder.includes(fallbackIndex)) {
+                    askedOrder.push(fallbackIndex);
+                    currentPage++;
+                    displayQuestion();
+                    return;
+                }
+            } finally {
+                if (nextBtn) {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = (currentPage === totalQuestions - 1) ? 'Submit' : 'Next →';
+                }
+            }
+        }
+
+        if (adaptiveEnabled && askedOrder.length < totalQuestions) {
+            alert('Unable to load the next question right now. Please click Next again.');
+            return;
+        }
     }
+
+    submitExam();
 }
 
 /**

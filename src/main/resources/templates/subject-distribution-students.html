@@ -73,7 +73,10 @@
                             <th>Type</th>
                             <th>Deadline</th>
                             <th>Last Submitted</th>
-                            <th>Status</th>
+                            <th>Open-Ended</th>
+                            <th>Grade</th>
+                            <th>Release</th>
+                            <th>Action</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -88,7 +91,57 @@
                             </td>
                             <td th:text="${item.deadline}">Deadline</td>
                             <td th:text="${item.lastSubmittedAt}">-</td>
-                            <td><span class="badge bg-success">Submitted</span></td>
+                            <td>
+                                <span th:if="${item.openEndedCount > 0}" class="badge bg-info"
+                                      th:text="${item.openEndedCount} + ' item(s)'">0 item(s)</span>
+                                <span th:if="${item.openEndedCount == 0}" class="badge bg-secondary">None</span>
+                            </td>
+                            <td>
+                                <span th:if="${item.needsManualGrading}" class="badge bg-warning text-dark">Needs Manual Check</span>
+                                <span th:if="${!item.needsManualGrading and item.isGraded}" class="badge bg-success">Complete</span>
+                                <span th:if="${!item.needsManualGrading and !item.isGraded}" class="badge bg-secondary">Auto-Graded</span>
+                            </td>
+                            <td>
+                                <span th:if="${item.resultsReleased}" class="badge bg-success">Released</span>
+                                <span th:if="${!item.resultsReleased}" class="badge bg-secondary">Hidden</span>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <a th:if="${item.submissionId != null}"
+                                       th:href="@{/teacher/view-result/{id}(id=${item.submissionId})}"
+                                       class="btn btn-sm btn-outline-primary"
+                                       title="View submitted exam paper">
+                                        <i class="bi bi-file-earmark-text me-1"></i>Paper
+                                    </a>
+
+                                    <a th:if="${item.submissionId != null and item.needsManualGrading}"
+                                       th:href="@{/teacher/grade/{id}(id=${item.submissionId})}"
+                                       class="btn btn-sm btn-warning"
+                                       title="Grade open-ended answers">
+                                        <i class="bi bi-pencil-square me-1"></i>Grade
+                                    </a>
+
+                                    <form th:if="${item.submissionId != null}"
+                                          th:action="@{/teacher/toggle-result-release/{id}(id=${item.submissionId})}"
+                                          method="post"
+                                          class="d-inline">
+                                        <input type="hidden" name="redirectTo" value="distribution">
+                                        <input type="hidden" name="subjectId" th:value="${subject.id}">
+                                        <input type="hidden" name="filterExamName" th:value="${filterExamName}">
+                                        <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
+                                        <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
+                                        <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
+                                        <button type="submit"
+                                                class="btn btn-sm"
+                                                th:classappend="${item.resultsReleased ? 'btn-outline-secondary' : 'btn-outline-success'}"
+                                                th:disabled="${item.needsManualGrading}"
+                                                th:title="${item.needsManualGrading ? 'Complete open-ended grading before release' : (item.resultsReleased ? 'Hide grade from student' : 'Release grade to student')}">
+                                            <i th:class="${item.resultsReleased ? 'bi bi-eye-slash me-1' : 'bi bi-eye me-1'}"></i>
+                                            <span th:text="${item.resultsReleased ? 'Hide' : 'Release'}"></span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
 
                         <tr th:each="item : ${notSubmittedStudents}"
@@ -102,7 +155,10 @@
                             </td>
                             <td th:text="${item.deadline}">Deadline</td>
                             <td th:text="${item.lastSubmittedAt}">-</td>
+                            <td><span class="badge bg-secondary">-</span></td>
                             <td><span class="badge bg-warning text-dark">Not Submitted</span></td>
+                            <td><span class="badge bg-secondary">Hidden</span></td>
+                            <td><span class="text-muted small">No paper yet</span></td>
                         </tr>
 
                         <tr th:each="item : ${queuedStudents}"
@@ -116,7 +172,10 @@
                             </td>
                             <td th:text="${item.deadline}">Deadline</td>
                             <td th:text="${item.lastSubmittedAt}">-</td>
+                            <td><span class="badge bg-secondary">-</span></td>
                             <td><span class="badge bg-secondary">Queued</span></td>
+                            <td><span class="badge bg-secondary">Hidden</span></td>
+                            <td><span class="text-muted small">Waiting</span></td>
                         </tr>
                         </tbody>
                     </table>

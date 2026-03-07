@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -59,10 +60,10 @@ public class TeacherController {
         Pattern.compile("(?m)^\\s*(\\d+)\\s*[\\).:-]\\s*(.+)$");
 
     private static final Pattern INLINE_ANSWER_PATTERN =
-        Pattern.compile("(?i)\\banswer\\s*[:\\-]\\s*([A-D]|[^\\r\\n]+)");
+        Pattern.compile("(?i)\\banswer\\s*[:\\-]\\s*([A-Z]|\\d+|[^\\r\\n]+)");
 
     private static final Pattern ANSWER_KEY_PATTERN =
-        Pattern.compile("(?m)^\\s*(\\d+)\\s*[\\).:-]?\\s*([A-D]|[^\\r\\n]+)\\s*$");
+        Pattern.compile("(?m)^\\s*(\\d+)\\s*[\\).:-]?\\s*([A-Z]|\\d+|[^\\r\\n]+)\\s*$");
 
     private static final Pattern HTML_TAG_PATTERN =
         Pattern.compile("<\\/?[a-z][\\s\\S]*?>", Pattern.CASE_INSENSITIVE);
@@ -450,6 +451,7 @@ public class TeacherController {
             }
         }
         newQuestion.put("choices", choices);
+        applyDefaultItemParameters(newQuestion, normalizeDifficulty(difficulty));
 
         int newNumber = questions.size() + 1;
         String key = String.valueOf(newNumber);
@@ -508,6 +510,7 @@ public class TeacherController {
 
         Map<String, Object> target = questions.get(questionIndex);
         target.put("question", normalizedQuestion);
+        applyDefaultItemParameters(target, normalizeDifficulty(difficulty));
 
         String key = String.valueOf(questionIndex + 1);
         difficulties.put(key, normalizeMathSymbols(difficulty).isBlank() ? "Medium" : normalizeMathSymbols(difficulty));
@@ -892,14 +895,38 @@ public class TeacherController {
         for (EnrolledStudent student : enrolledStudents) {
             ExamSubmission submission = submissions.stream()
                 .filter(sub -> sub.getStudentEmail().equalsIgnoreCase(student.getStudentEmail()))
-                .findFirst().orElse(null);
+                .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
+                    Comparator.nullsLast(Comparator.naturalOrder())))
+                .orElse(null);
+
             Map<String, Object> item = new HashMap<>();
             item.put("studentName", student.getStudentName());
             item.put("studentEmail", student.getStudentEmail());
-            item.put("examName", filterExamName != null ? filterExamName : "");
-            item.put("activityType", filterActivityType != null ? filterActivityType : "Quiz");
+            item.put("examName", submission != null ? submission.getExamName() : (filterExamName != null ? filterExamName : ""));
+            item.put("activityType", submission != null && submission.getActivityType() != null
+                ? submission.getActivityType()
+                : (filterActivityType != null ? filterActivityType : "Quiz"));
             item.put("deadline", filterDeadline != null ? filterDeadline : "");
             item.put("lastSubmittedAt", submission != null && submission.getSubmittedAt() != null ? submission.getSubmittedAt().toString() : "-");
+            item.put("submissionId", submission != null ? submission.getId() : null);
+
+            int openEndedCount = 0;
+            boolean needsManualGrading = false;
+            boolean graded = false;
+            boolean released = false;
+
+            if (submission != null) {
+                List<Map<String, Object>> answerDetails = extractAnswerDetails(submission.getAnswerDetailsJson());
+                openEndedCount = (int) answerDetails.stream().filter(this::isOpenEndedAnswerDetail).count();
+                graded = submission.isGraded();
+                released = submission.isResultsReleased();
+                needsManualGrading = openEndedCount > 0 && !graded;
+            }
+
+            item.put("openEndedCount", openEndedCount);
+            item.put("needsManualGrading", needsManualGrading);
+            item.put("isGraded", graded);
+            item.put("resultsReleased", released);
 
             // Only mark as 'Submitted' if isSubmissionCompleted(submission) is true
             if (submission != null && isSubmissionCompleted(submission)) {
@@ -933,6 +960,199 @@ public class TeacherController {
             filterExamName != null || filterActivityType != null || filterTimeLimit != null || filterDeadline != null);
 
         return "subject-distribution-students";
+    }
+
+    @GetMapping("/view-result/{id}")
+    public String viewResult(@PathVariable("id") Long id,
+                             Model model,
+                             Principal principal) {
+        Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(id);
+        if (submissionOpt.isEmpty()) {
+            return "redirect:/teacher/subjects";
+        }
+
+        ExamSubmission submission = submissionOpt.get();
+        if (!canTeacherAccessSubmission(submission, principal)) {
+            return "redirect:/teacher/subjects";
+        }
+
+        List<Map<String, Object>> answerDetails = extractAnswerDetails(submission.getAnswerDetailsJson());
+        int correctAnswers = (int) answerDetails.stream().filter(this::isCorrectAnswerDetail).count();
+        int incorrectAnswers = Math.max(0, answerDetails.size() - correctAnswers);
+
+        model.addAttribute("submission", submission);
+        model.addAttribute("answerDetails", answerDetails);
+        model.addAttribute("correctAnswers", correctAnswers);
+        model.addAttribute("incorrectAnswers", incorrectAnswers);
+        return "teacher-view-student-result";
+    }
+
+    @GetMapping("/grade/{id}")
+    public String gradeSubmission(@PathVariable("id") Long id,
+                                  Model model,
+                                  Principal principal,
+                                  RedirectAttributes redirectAttributes) {
+        Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(id);
+        if (submissionOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Submission not found.");
+            return "redirect:/teacher/subjects";
+        }
+
+        ExamSubmission submission = submissionOpt.get();
+        if (!canTeacherAccessSubmission(submission, principal)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to grade this submission.");
+            return "redirect:/teacher/subjects";
+        }
+
+        List<Map<String, Object>> answerDetails = extractAnswerDetails(submission.getAnswerDetailsJson());
+        Map<Integer, Integer> manualPerQuestion = extractManualPerQuestion(submission.getAnswerDetailsJson());
+
+        int textInputCount = 0;
+        int manualFromPerQuestion = 0;
+        for (int index = 0; index < answerDetails.size(); index++) {
+            Map<String, Object> detail = answerDetails.get(index);
+            int questionNumber = extractInt(detail.get("questionNumber"), index + 1);
+            boolean openEnded = isOpenEndedAnswerDetail(detail);
+            if (openEnded) {
+                textInputCount++;
+            }
+
+            int manualPoints = manualPerQuestion.getOrDefault(questionNumber, 0);
+            manualFromPerQuestion += manualPoints;
+
+            detail.put("questionNumber", questionNumber);
+            detail.put("isTextInput", openEnded);
+            detail.put("needsManualGrade", openEnded);
+            detail.put("manualPoints", manualPoints);
+        }
+
+        int currentManualScore = submission.getManualScore() != null
+            ? Math.max(0, submission.getManualScore())
+            : Math.max(0, manualFromPerQuestion);
+        int maxManualScore = Math.max(1, submission.getTotalQuestions());
+
+        model.addAttribute("submission", submission);
+        model.addAttribute("answerDetails", answerDetails);
+        model.addAttribute("currentManualScore", currentManualScore);
+        model.addAttribute("textInputCount", textInputCount);
+        model.addAttribute("maxManualScore", maxManualScore);
+        return "teacher-grade-exam";
+    }
+
+    @PostMapping("/finalize-grade")
+    public String finalizeGrade(@RequestParam Map<String, String> formData,
+                                Principal principal,
+                                RedirectAttributes redirectAttributes) {
+        Long submissionId = parseLongSafe(formData.get("submissionId"));
+        if (submissionId == null) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Invalid submission id.");
+            return "redirect:/teacher/subjects";
+        }
+
+        Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(submissionId);
+        if (submissionOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Submission not found.");
+            return "redirect:/teacher/subjects";
+        }
+
+        ExamSubmission submission = submissionOpt.get();
+        if (!canTeacherAccessSubmission(submission, principal)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to grade this submission.");
+            return "redirect:/teacher/subjects";
+        }
+
+        List<Map<String, Object>> answerDetails = extractAnswerDetails(submission.getAnswerDetailsJson());
+        Map<Integer, Integer> manualPerQuestion = new HashMap<>();
+        int totalManualScore = 0;
+        int manualMaxPerQuestion = Math.max(1, submission.getTotalQuestions());
+
+        for (int index = 0; index < answerDetails.size(); index++) {
+            Map<String, Object> detail = answerDetails.get(index);
+            int questionNumber = extractInt(detail.get("questionNumber"), index + 1);
+            if (!isOpenEndedAnswerDetail(detail)) {
+                continue;
+            }
+
+            int manualPoints = clampInt(parseIntSafe(formData.get("manual_q_" + questionNumber), 0), 0, manualMaxPerQuestion);
+            manualPerQuestion.put(questionNumber, manualPoints);
+            totalManualScore += manualPoints;
+            detail.put("manualPoints", manualPoints);
+            detail.put("needsManualGrade", false);
+            detail.put("isTextInput", true);
+        }
+
+        if (manualPerQuestion.isEmpty()) {
+            totalManualScore = clampInt(parseIntSafe(formData.get("manualScore"), 0), 0, submission.getTotalQuestions());
+        } else {
+            totalManualScore = clampInt(totalManualScore, 0, submission.getTotalQuestions());
+        }
+
+        submission.setManualScore(totalManualScore);
+        submission.setGraded(Boolean.TRUE);
+        submission.setGradedAt(LocalDateTime.now());
+        submission.setTeacherComments(formData.getOrDefault("teacherComments", "").trim());
+
+        String releaseOption = formData.getOrDefault("releaseOption", "FINALIZE_ONLY");
+        boolean releaseNow = "RELEASE_TO_STUDENT".equalsIgnoreCase(releaseOption);
+        submission.setResultsReleased(releaseNow);
+        submission.setReleasedAt(releaseNow ? LocalDateTime.now() : null);
+
+        Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
+        payload.put("finalAnswers", answerDetails);
+        payload.put("manualPerQuestion", manualPerQuestion);
+        payload.put("manualScore", totalManualScore);
+        payload.put("gradedAt", submission.getGradedAt() == null ? null : submission.getGradedAt().toString());
+        submission.setAnswerDetailsJson(gson.toJson(payload));
+
+        examSubmissionRepository.save(submission);
+
+        if (releaseNow) {
+            redirectAttributes.addFlashAttribute("successMessage", "Grade finalized and released to student.");
+        } else {
+            redirectAttributes.addFlashAttribute("successMessage", "Grade finalized. Result remains hidden until release.");
+        }
+
+        return "redirect:/teacher/view-result/" + submission.getId();
+    }
+
+    @PostMapping("/toggle-result-release/{id}")
+    public String toggleResultRelease(@PathVariable("id") Long id,
+                                      @RequestParam(name = "redirectTo", required = false) String redirectTo,
+                                      @RequestParam(name = "subjectId", required = false) Long subjectId,
+                                      @RequestParam(name = "filterExamName", required = false) String filterExamName,
+                                      @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
+                                      @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
+                                      @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                      Principal principal,
+                                      RedirectAttributes redirectAttributes) {
+        Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(id);
+        if (submissionOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Submission not found.");
+            return buildReleaseRedirect(redirectTo, id, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+        }
+
+        ExamSubmission submission = submissionOpt.get();
+        if (!canTeacherAccessSubmission(submission, principal)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to update this submission.");
+            return "redirect:/teacher/subjects";
+        }
+
+        boolean isCurrentlyReleased = submission.isResultsReleased();
+        if (!isCurrentlyReleased && hasOpenEndedQuestions(submission) && !submission.isGraded()) {
+            redirectAttributes.addFlashAttribute("errorMessage",
+                "Complete open-ended grading first before releasing this result.");
+            return buildReleaseRedirect(redirectTo, id, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+        }
+
+        submission.setResultsReleased(!isCurrentlyReleased);
+        submission.setReleasedAt(submission.isResultsReleased() ? LocalDateTime.now() : null);
+        examSubmissionRepository.save(submission);
+
+        redirectAttributes.addFlashAttribute("successMessage",
+            submission.isResultsReleased()
+                ? "Result released to student."
+                : "Result hidden from student.");
+        return buildReleaseRedirect(redirectTo, id, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
     }
 
     @GetMapping("/profile")
@@ -1045,6 +1265,197 @@ public class TeacherController {
         } catch (Exception exception) {
             return new HashMap<>();
         }
+    }
+
+    private String buildReleaseRedirect(String redirectTo,
+                                        Long submissionId,
+                                        Long subjectId,
+                                        String filterExamName,
+                                        String filterActivityType,
+                                        Integer filterTimeLimit,
+                                        String filterDeadline) {
+        if ("detail".equalsIgnoreCase(redirectTo) && submissionId != null) {
+            return "redirect:/teacher/view-result/" + submissionId;
+        }
+
+        if ("distribution".equalsIgnoreCase(redirectTo) && subjectId != null) {
+            StringBuilder target = new StringBuilder("redirect:/teacher/subject-classroom/")
+                .append(subjectId)
+                .append("/distribution-students");
+
+            List<String> query = new ArrayList<>();
+            appendQueryParam(query, "filterExamName", filterExamName);
+            appendQueryParam(query, "filterActivityType", filterActivityType);
+            if (filterTimeLimit != null) {
+                query.add("filterTimeLimit=" + filterTimeLimit);
+            }
+            appendQueryParam(query, "filterDeadline", filterDeadline);
+
+            if (!query.isEmpty()) {
+                target.append("?").append(String.join("&", query));
+            }
+            return target.toString();
+        }
+
+        if ("submissions".equalsIgnoreCase(redirectTo)) {
+            return "redirect:/teacher/submissions";
+        }
+
+        return "redirect:/teacher/subjects";
+    }
+
+    private void appendQueryParam(List<String> query, String key, String value) {
+        if (query == null || key == null || key.isBlank() || value == null || value.isBlank()) {
+            return;
+        }
+        query.add(key + "=" + java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+    }
+
+    private boolean canTeacherAccessSubmission(ExamSubmission submission, Principal principal) {
+        if (submission == null || principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            return false;
+        }
+        String teacherEmail = principal.getName();
+        String subjectName = submission.getSubject() == null ? "" : submission.getSubject().trim();
+        if (subjectName.isBlank()) {
+            return false;
+        }
+
+        return subjectRepository.findByTeacherEmail(teacherEmail).stream()
+            .map(Subject::getSubjectName)
+            .filter(name -> name != null && !name.isBlank())
+            .anyMatch(name -> name.equalsIgnoreCase(subjectName));
+    }
+
+    private boolean hasOpenEndedQuestions(ExamSubmission submission) {
+        if (submission == null) {
+            return false;
+        }
+        return extractAnswerDetails(submission.getAnswerDetailsJson()).stream()
+            .anyMatch(this::isOpenEndedAnswerDetail);
+    }
+
+    private List<Map<String, Object>> extractAnswerDetails(String answerDetailsJson) {
+        if (answerDetailsJson == null || answerDetailsJson.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        try {
+            Map<String, Object> payload = gson.fromJson(answerDetailsJson,
+                new TypeToken<Map<String, Object>>() { }.getType());
+            Object finalAnswers = payload == null ? null : payload.get("finalAnswers");
+            if (finalAnswers instanceof List<?> list) {
+                return list.stream()
+                    .filter(Map.class::isInstance)
+                    .map(item -> (Map<String, Object>) item)
+                    .collect(Collectors.toList());
+            }
+        } catch (Exception ignored) {
+        }
+
+        return new ArrayList<>();
+    }
+
+    private Map<Integer, Integer> extractManualPerQuestion(String answerDetailsJson) {
+        Map<Integer, Integer> manualPerQuestion = new HashMap<>();
+        Map<String, Object> payload = parseFlexibleMapJson(answerDetailsJson);
+        Object raw = payload.get("manualPerQuestion");
+        if (!(raw instanceof Map<?, ?> map)) {
+            return manualPerQuestion;
+        }
+
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            Integer questionNumber = parseIntSafe(entry.getKey() == null ? null : String.valueOf(entry.getKey()), -1);
+            if (questionNumber == null || questionNumber <= 0) {
+                continue;
+            }
+            Integer points = null;
+            if (entry.getValue() instanceof Number number) {
+                points = number.intValue();
+            } else if (entry.getValue() != null) {
+                points = parseIntSafe(String.valueOf(entry.getValue()), 0);
+            }
+            manualPerQuestion.put(questionNumber, Math.max(0, points == null ? 0 : points));
+        }
+
+        return manualPerQuestion;
+    }
+
+    private boolean isOpenEndedAnswerDetail(Map<String, Object> detail) {
+        if (detail == null || detail.isEmpty()) {
+            return false;
+        }
+
+        String type = String.valueOf(detail.getOrDefault("type", "")).trim();
+        String correctAnswer = String.valueOf(detail.getOrDefault("correctAnswer", "")).trim();
+        String questionText = String.valueOf(detail.getOrDefault("question", "")).trim();
+
+        if ("OPEN_ENDED".equalsIgnoreCase(type)) {
+            return true;
+        }
+
+        if ("MANUAL_GRADE".equalsIgnoreCase(correctAnswer)) {
+            return true;
+        }
+
+        return questionText.startsWith("[TEXT_INPUT]");
+    }
+
+    private boolean isCorrectAnswerDetail(Map<String, Object> detail) {
+        if (detail == null || detail.isEmpty()) {
+            return false;
+        }
+        Object value = detail.get("isCorrect");
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        return value != null && "true".equalsIgnoreCase(String.valueOf(value));
+    }
+
+    private int extractInt(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private Long parseLongSafe(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Integer parseIntSafe(String value, int fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private int clampInt(int value, int min, int max) {
+        if (max < min) {
+            return min;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 
     private List<Integer> selectQuestionIndexesByDifficulty(int requestedCount,
@@ -1218,6 +1629,11 @@ public class TeacherController {
                     }
                 }
 
+                String itemDifficulty = question.get("difficulty") == null
+                    ? "Medium"
+                    : normalizeDifficulty(String.valueOf(question.get("difficulty")));
+                applyDefaultItemParameters(question, itemDifficulty);
+
                 questions.add(question);
             }
         }
@@ -1231,7 +1647,7 @@ public class TeacherController {
             Matcher matcher = NUMBERED_QUESTION_PATTERN.matcher(text);
             while (matcher.find()) {
                 String questionText = matcher.group(2) == null ? "" : matcher.group(2).trim();
-                questionText = normalizeQuestionHtml(questionText);
+                questionText = normalizeQuestionHtml(normalizeMathSymbols(questionText));
                 if (questionText.isEmpty()) {
                     continue;
                 }
@@ -1244,6 +1660,8 @@ public class TeacherController {
                 if (answerMatcher.find()) {
                     question.put("answer", normalizeMathSymbols(answerMatcher.group(1)));
                 }
+
+                applyDefaultItemParameters(question, "Medium");
 
                 questions.add(question);
             }
@@ -1327,6 +1745,63 @@ public class TeacherController {
         return "";
     }
 
+    private void applyDefaultItemParameters(Map<String, Object> question, String difficulty) {
+        if (question == null) {
+            return;
+        }
+
+        String normalizedDifficulty = normalizeDifficulty(difficulty);
+        if (normalizedDifficulty.isBlank()) {
+            normalizedDifficulty = "Medium";
+        }
+
+        double defaultA;
+        double defaultB;
+        double defaultC = 0.20;
+
+        if ("Easy".equalsIgnoreCase(normalizedDifficulty)) {
+            defaultA = 1.00;
+            defaultB = -0.80;
+        } else if ("Hard".equalsIgnoreCase(normalizedDifficulty)) {
+            defaultA = 1.40;
+            defaultB = 0.80;
+        } else {
+            defaultA = 1.20;
+            defaultB = 0.00;
+        }
+
+        Double currentA = parseNumeric(question.get("irtA"));
+        Double currentB = parseNumeric(question.get("irtB"));
+        Double currentC = parseNumeric(question.get("irtC"));
+
+        question.put("irtA", clamp(currentA == null ? defaultA : currentA, 0.30, 3.00));
+        question.put("irtB", clamp(currentB == null ? defaultB : currentB, -3.00, 3.00));
+        question.put("irtC", clamp(currentC == null ? defaultC : currentC, 0.00, 0.35));
+
+        Object exposureRaw = question.get("exposureCount");
+        if (!(exposureRaw instanceof Number) && parseNumeric(exposureRaw) == null) {
+            question.put("exposureCount", 0);
+        }
+    }
+
+    private Double parseNumeric(Object raw) {
+        if (raw instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(raw).trim());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private String canonicalizeCsvHeader(String header) {
         if (header == null) {
             return "";
@@ -1357,7 +1832,7 @@ public class TeacherController {
         }
 
         return choiceValue
-            .replaceFirst("(?i)^\\s*\\(?[a-z]\\)?[.)-]\\s*", "")
+            .replaceFirst("(?i)^\\s*(?:\\(?[a-z0-9]{1,3}\\)?[.)-])\\s*", "")
             .trim();
     }
 
@@ -1525,7 +2000,27 @@ public class TeacherController {
             }
         }
 
-        return value.trim();
+        value = convertSupSubHtmlToTokens(value);
+        return normalizeEquationArtifacts(value.trim());
+    }
+
+    private String convertSupSubHtmlToTokens(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String normalized = value;
+        for (int pass = 0; pass < 4; pass++) {
+            String updated = normalized
+                .replaceAll("(?i)<sup[^>]*>\\s*(.*?)\\s*</sup>", "^$1")
+                .replaceAll("(?i)<sub[^>]*>\\s*(.*?)\\s*</sub>", "_$1");
+            if (updated.equals(normalized)) {
+                break;
+            }
+            normalized = updated;
+        }
+
+        return normalized;
     }
 
     private boolean normalizeQuestionRowsInPlace(List<Map<String, Object>> questionRows) {
@@ -1758,6 +2253,113 @@ public class TeacherController {
         }
         hexMatcher.appendTail(hexBuffer);
 
-        return hexBuffer.toString().trim();
+        return normalizeEquationArtifacts(hexBuffer.toString().trim());
+    }
+
+    private String normalizeEquationArtifacts(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        String normalized = text
+            .replace('\u00A0', ' ')
+            .replace("\u200B", "")
+            .replace("\u200C", "")
+            .replace("\u200D", "")
+            .replace("\uFEFF", "")
+            .replace('\u2018', '\'')
+            .replace('\u2019', '\'')
+            .replace('\u201C', '"')
+            .replace('\u201D', '"')
+            .replace('\u2013', '-')
+            .replace('\u2014', '-')
+            .replace('\u2212', '-')
+            .replace('\u2044', '/')
+            .replaceAll("[\\t\\x0B\\f\\r]+", " ")
+            .replaceAll(" *\\n *", "\\n")
+            .replaceAll("\\n{3,}", "\\n\\n");
+
+        normalized = normalized
+            .replace("×", "\\times")
+            .replace("÷", "\\div")
+            .replace("≤", "\\le")
+            .replace("≥", "\\ge")
+            .replace("≠", "\\ne")
+            .replace("≈", "\\approx")
+            .replace("∞", "\\infty")
+            .replace("π", "\\pi")
+            .replace("α", "\\alpha")
+            .replace("β", "\\beta")
+            .replace("γ", "\\gamma")
+            .replace("Δ", "\\Delta")
+            .replace("θ", "\\theta")
+            .replace("∑", "\\sum")
+            .replace("∏", "\\prod")
+            .replace("√", "\\sqrt")
+            .replace("∫", "\\int");
+
+        StringBuilder rebuilt = new StringBuilder();
+        for (int index = 0; index < normalized.length(); index++) {
+            char ch = normalized.charAt(index);
+            String superscript = toSuperscriptToken(ch);
+            if (superscript != null) {
+                rebuilt.append(superscript);
+                continue;
+            }
+
+            String subscript = toSubscriptToken(ch);
+            if (subscript != null) {
+                rebuilt.append(subscript);
+                continue;
+            }
+
+            rebuilt.append(ch);
+        }
+
+        return rebuilt.toString().trim();
+    }
+
+    private String toSuperscriptToken(char value) {
+        return switch (value) {
+            case '\u00B0' -> "^\\circ";
+            case '\u00B9' -> "^1";
+            case '\u00B2' -> "^2";
+            case '\u00B3' -> "^3";
+            case '\u2070' -> "^0";
+            case '\u2074' -> "^4";
+            case '\u2075' -> "^5";
+            case '\u2076' -> "^6";
+            case '\u2077' -> "^7";
+            case '\u2078' -> "^8";
+            case '\u2079' -> "^9";
+            case '\u207A' -> "^+";
+            case '\u207B' -> "^-";
+            case '\u207C' -> "^=";
+            case '\u207D' -> "^(";
+            case '\u207E' -> "^)";
+            case '\u207F' -> "^n";
+            default -> null;
+        };
+    }
+
+    private String toSubscriptToken(char value) {
+        return switch (value) {
+            case '\u2080' -> "_0";
+            case '\u2081' -> "_1";
+            case '\u2082' -> "_2";
+            case '\u2083' -> "_3";
+            case '\u2084' -> "_4";
+            case '\u2085' -> "_5";
+            case '\u2086' -> "_6";
+            case '\u2087' -> "_7";
+            case '\u2088' -> "_8";
+            case '\u2089' -> "_9";
+            case '\u208A' -> "_+";
+            case '\u208B' -> "_-";
+            case '\u208C' -> "_=";
+            case '\u208D' -> "_(";
+            case '\u208E' -> "_)";
+            default -> null;
+        };
     }
 }

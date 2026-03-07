@@ -893,6 +893,138 @@
         }, 400);
     }
 
+    function toSuperscriptToken(ch) {
+        const map = {
+            '\u00B0': '^\\circ',
+            '\u00B9': '^1',
+            '\u00B2': '^2',
+            '\u00B3': '^3',
+            '\u2070': '^0',
+            '\u2074': '^4',
+            '\u2075': '^5',
+            '\u2076': '^6',
+            '\u2077': '^7',
+            '\u2078': '^8',
+            '\u2079': '^9',
+            '\u207A': '^+',
+            '\u207B': '^-',
+            '\u207C': '^=',
+            '\u207D': '^(',
+            '\u207E': '^)',
+            '\u207F': '^n'
+        };
+        return map[ch] || null;
+    }
+
+    function toSubscriptToken(ch) {
+        const map = {
+            '\u2080': '_0',
+            '\u2081': '_1',
+            '\u2082': '_2',
+            '\u2083': '_3',
+            '\u2084': '_4',
+            '\u2085': '_5',
+            '\u2086': '_6',
+            '\u2087': '_7',
+            '\u2088': '_8',
+            '\u2089': '_9',
+            '\u208A': '_+',
+            '\u208B': '_-',
+            '\u208C': '_=',
+            '\u208D': '_(',
+            '\u208E': '_)'
+        };
+        return map[ch] || null;
+    }
+
+    function normalizeEquationArtifactsText(rawText, trimResult = true) {
+        if (rawText == null) {
+            return '';
+        }
+
+        const symbolMap = {
+            '\u00D7': '\\times',
+            '\u00F7': '\\div',
+            '\u2264': '\\le',
+            '\u2265': '\\ge',
+            '\u2260': '\\ne',
+            '\u2248': '\\approx',
+            '\u221E': '\\infty',
+            '\u03C0': '\\pi',
+            '\u03B1': '\\alpha',
+            '\u03B2': '\\beta',
+            '\u03B3': '\\gamma',
+            '\u0394': '\\Delta',
+            '\u03B8': '\\theta',
+            '\u2211': '\\sum',
+            '\u220F': '\\prod',
+            '\u221A': '\\sqrt',
+            '\u222B': '\\int'
+        };
+
+        const normalized = String(rawText)
+            .replace(/\u00A0/g, ' ')
+            .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+            .replace(/[\u2018\u2019]/g, "'")
+            .replace(/[\u201C\u201D]/g, '"')
+            .replace(/[\u2013\u2014\u2212]/g, '-')
+            .replace(/\u2044/g, '/');
+
+        let rebuilt = '';
+        for (const ch of normalized) {
+            const superscript = toSuperscriptToken(ch);
+            if (superscript) {
+                rebuilt += superscript;
+                continue;
+            }
+
+            const subscript = toSubscriptToken(ch);
+            if (subscript) {
+                rebuilt += subscript;
+                continue;
+            }
+
+            if (symbolMap[ch]) {
+                rebuilt += symbolMap[ch];
+                continue;
+            }
+
+            rebuilt += ch;
+        }
+
+        const normalizedWhitespace = rebuilt
+            .replace(/[\t\x0B\f\r]+/g, ' ')
+            .replace(/ *\n */g, '\n')
+            .replace(/\n{3,}/g, '\n\n');
+
+        return trimResult ? normalizedWhitespace.trim() : normalizedWhitespace;
+    }
+
+    function normalizeEquationArtifactsInHtml(rawHtml) {
+        if (!rawHtml) {
+            return '';
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div id="mq-normalize-root">${rawHtml}</div>`, 'text/html');
+        const root = doc.getElementById('mq-normalize-root');
+        if (!root) {
+            return normalizeEquationArtifactsText(rawHtml);
+        }
+
+        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const textNodes = [];
+        while (walker.nextNode()) {
+            textNodes.push(walker.currentNode);
+        }
+
+        textNodes.forEach(node => {
+            node.nodeValue = normalizeEquationArtifactsText(node.nodeValue || '', false);
+        });
+
+        return (root.innerHTML || '').trim();
+    }
+
     function toggleAddQuestionTypeFields() {
         const typeSelect = document.getElementById('addQuestionType');
         const choicesContainer = document.getElementById('mcqChoicesContainer');
@@ -993,11 +1125,25 @@
         const openEndedAnswerInput = document.getElementById('addOpenEndedAnswerInput');
         if (!hidden) return;
 
+        if (openEndedAnswerInput) {
+            const normalizedReference = normalizeEquationArtifactsText(openEndedAnswerInput.value || '');
+            if (normalizedReference !== openEndedAnswerInput.value) {
+                openEndedAnswerInput.value = normalizedReference;
+            }
+        }
+
         const rows = Array.from(document.querySelectorAll('#choicesInputs .choice-input-row'));
         const values = rows
             .map(row => row.querySelector('.add-choice-input'))
             .filter(Boolean)
-            .map(input => (input.value || '').trim())
+            .map(input => {
+                const normalizedValue = normalizeEquationArtifactsText(input.value || '');
+                if (normalizedValue !== input.value) {
+                    input.value = normalizedValue;
+                }
+                return normalizedValue;
+            })
+            .map(value => (value || '').trim())
             .filter(Boolean);
 
         hidden.value = values.join('\n');
@@ -1044,8 +1190,15 @@
         input.type = 'text';
         input.className = 'form-control add-choice-input';
         input.placeholder = 'Enter choice';
-        input.value = value;
+        input.value = normalizeEquationArtifactsText(value || '');
         input.addEventListener('input', syncAddChoicesText);
+        input.addEventListener('blur', function () {
+            const normalizedValue = normalizeEquationArtifactsText(input.value || '');
+            if (normalizedValue !== input.value) {
+                input.value = normalizedValue;
+                syncAddChoicesText();
+            }
+        });
 
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -1122,6 +1275,13 @@
         const addOpenEndedAnswerInput = document.getElementById('addOpenEndedAnswerInput');
         if (addOpenEndedAnswerInput) {
             addOpenEndedAnswerInput.addEventListener('input', syncAddChoicesText);
+            addOpenEndedAnswerInput.addEventListener('blur', function () {
+                const normalizedValue = normalizeEquationArtifactsText(addOpenEndedAnswerInput.value || '');
+                if (normalizedValue !== addOpenEndedAnswerInput.value) {
+                    addOpenEndedAnswerInput.value = normalizedValue;
+                }
+                syncAddChoicesText();
+            });
         }
 
         toggleAddQuestionTypeFields();
@@ -1449,7 +1609,9 @@
                 const rawHtml = clipboard ? clipboard.getData('text/html') : '';
                 const plainText = clipboard ? clipboard.getData('text/plain') : '';
                 const cleanHtml = sanitizePastedHtml(rawHtml);
-                insertEditorContent(editor, cleanHtml, plainText);
+                const normalizedHtml = normalizeEquationArtifactsInHtml(cleanHtml);
+                const normalizedText = normalizeEquationArtifactsText(plainText);
+                insertEditorContent(editor, normalizedHtml, normalizedText);
             });
             editor.addEventListener('mouseup', function () {
                 saveSelection(editor);
@@ -1564,6 +1726,12 @@
                 const typeSelect = document.getElementById('addQuestionType');
                 if (!editor || !input) return;
 
+                const normalizedHtml = normalizeEquationArtifactsInHtml(editor.innerHTML || '');
+                if (normalizedHtml !== (editor.innerHTML || '')) {
+                    editor.innerHTML = normalizedHtml;
+                    updateMathPreview();
+                }
+
                 const plain = (editor.innerText || '').trim();
                 if (!plain) {
                     event.preventDefault();
@@ -1597,7 +1765,12 @@
                     }
                 }
 
-                input.value = editor.innerHTML;
+                const openEndedAnswerInput = document.getElementById('addOpenEndedAnswerInput');
+                if (openEndedAnswerInput) {
+                    openEndedAnswerInput.value = normalizeEquationArtifactsText(openEndedAnswerInput.value || '');
+                }
+
+                input.value = normalizeEquationArtifactsInHtml(editor.innerHTML || '');
             });
         }
 
@@ -1607,6 +1780,11 @@
                 const input = this.querySelector('.edit-question-text-input');
                 if (!editor || !input) return;
 
+                const normalizedHtml = normalizeEquationArtifactsInHtml(editor.innerHTML || '');
+                if (normalizedHtml !== (editor.innerHTML || '')) {
+                    editor.innerHTML = normalizedHtml;
+                }
+
                 const plain = (editor.innerText || '').trim();
                 if (!plain) {
                     event.preventDefault();
@@ -1614,7 +1792,12 @@
                     return;
                 }
 
-                input.value = editor.innerHTML;
+                const answerInput = this.querySelector('.edit-answer-input');
+                if (answerInput) {
+                    answerInput.value = normalizeEquationArtifactsText(answerInput.value || '');
+                }
+
+                input.value = normalizeEquationArtifactsInHtml(editor.innerHTML || '');
             });
         });
     });

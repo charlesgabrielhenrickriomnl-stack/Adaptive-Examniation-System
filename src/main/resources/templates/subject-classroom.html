@@ -127,12 +127,6 @@
                            placeholder="🔎 Search student name or email..." style="max-width:260px;">
                 </div>
 
-                <div th:if="${classroomStudentSummary == null || classroomStudentSummary.isEmpty()}" class="empty-state">
-                    <i class="bi bi-graph-up"></i>
-                    <p class="mb-1 fw-semibold small">No submissions yet.</p>
-                    <small class="text-muted">Submissions in this classroom will appear here.</small>
-                </div>
-
                 <div id="classroomStudentPanelList" th:if="${classroomStudentSummary != null && !classroomStudentSummary.isEmpty()}">
                     <div th:each="student,si : ${classroomStudentSummary}" class="student-panel"
                          th:attr="data-search-key=${#strings.toLowerCase(student.studentName) + ' ' + #strings.toLowerCase(student.studentEmail)}">

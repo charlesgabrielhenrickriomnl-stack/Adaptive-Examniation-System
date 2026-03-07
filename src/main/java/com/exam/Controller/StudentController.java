@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.util.HtmlUtils;
 
 import com.exam.entity.DistributedExam;
@@ -58,8 +60,11 @@ public class StudentController {
     private static final Pattern QUESTION_PARAM_PATTERN = Pattern.compile("q\\d+");
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<\\/?[a-z][\\s\\S]*?>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ESCAPED_HTML_TAG_PATTERN = Pattern.compile("&lt;\\/?[a-z][\\s\\S]*?&gt;", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CHOICE_LINE_PATTERN = Pattern.compile("^\\s*(?:\\(?([A-Z])\\)|([A-Z])[.)])\\s*(.+)$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CHOICE_MARKER_PATTERN = Pattern.compile("(?:\\(\\s*([A-Z])\\s*\\)|\\b([A-Z])[.)])\\s*", Pattern.CASE_INSENSITIVE);
+    private static final String CHOICE_LABEL_REGEX = "[A-Z]{1,3}|\\d{1,4}";
+    private static final Pattern CHOICE_LINE_PATTERN = Pattern.compile("^\\s*(?:\\(?(" + CHOICE_LABEL_REGEX + ")\\)|(" + CHOICE_LABEL_REGEX + ")[.)])\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHOICE_MARKER_PATTERN = Pattern.compile("(?:\\(\\s*(" + CHOICE_LABEL_REGEX + ")\\s*\\)|\\b(" + CHOICE_LABEL_REGEX + ")[.)])\\s*", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANSWER_LABEL_TOKEN_PATTERN = Pattern.compile("^\\(?\\s*([A-Z]{1,3})\\s*\\)?[.)-]?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANSWER_NUMERIC_TOKEN_PATTERN = Pattern.compile("^\\(?\\s*(\\d{1,4})\\s*\\)?[.)-]?$", Pattern.CASE_INSENSITIVE);
     private static final String ACTIVE_EXAM_SESSION_KEY = "ACTIVE_DISTRIBUTED_EXAM_ID";
 
     private final ExamSubmissionRepository examSubmissionRepository;
@@ -237,8 +242,17 @@ public class StudentController {
         Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
         List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
 
-        List<String> examQuestions = new ArrayList<>();
+        boolean itemMetadataChanged = ensureItemParametersInPlace(questionRows, difficultyMap, selectedIndexes);
+        if (itemMetadataChanged) {
+            paper.setOriginalQuestionsJson(gson.toJson(questionRows));
+            originalProcessedPaperRepository.save(paper);
+        }
+
+        List<Map<String, Object>> examQuestions = new ArrayList<>();
         List<String> difficulties = new ArrayList<>();
+        List<IRT3PLService.ItemParameters> objectiveParams = new ArrayList<>();
+        List<Integer> objectiveItemLocals = new ArrayList<>();
+
         for (Integer sourceIndex : selectedIndexes) {
             if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
                 continue;
@@ -251,7 +265,26 @@ public class StudentController {
             if (displayQuestion.isBlank()) {
                 continue;
             }
-            examQuestions.add(displayQuestion);
+
+            IRT3PLService.ItemParameters itemParams = resolveItemParameters(questionRows.get(sourceIndex), difficulty);
+            List<String> availableChoices = extractChoiceTexts(questionRows.get(sourceIndex), displayQuestion);
+            boolean openEnded = isOpenEndedQuestion(questionRows.get(sourceIndex), displayQuestion, answer, availableChoices);
+
+            Map<String, Object> questionItem = new HashMap<>();
+            questionItem.put("sourceQuestionNumber", sourceIndex + 1);
+            questionItem.put("question", displayQuestion);
+            questionItem.put("difficulty", difficulty.isBlank() ? "Medium" : difficulty);
+            questionItem.put("questionType", openEnded ? "OPEN_ENDED" : "MULTIPLE_CHOICE");
+            questionItem.put("irtA", itemParams.getDiscrimination());
+            questionItem.put("irtB", itemParams.getDifficulty());
+            questionItem.put("irtC", itemParams.getGuessing());
+
+            if (!openEnded) {
+                objectiveParams.add(itemParams);
+                objectiveItemLocals.add(examQuestions.size());
+            }
+
+            examQuestions.add(questionItem);
             difficulties.add(difficulty.isBlank() ? "Medium" : difficulty);
         }
 
@@ -259,6 +292,19 @@ public class StudentController {
             clearActiveExamSession(session, distributedExam.getId());
             return "redirect:/student/dashboard";
         }
+
+        int firstQuestionLocal = 0;
+        if (!objectiveParams.isEmpty()) {
+            int bestObjectiveLocal = irt3PLService.selectNextItem(0.0, objectiveParams, new HashSet<>());
+            if (bestObjectiveLocal >= 0 && bestObjectiveLocal < objectiveItemLocals.size()) {
+                firstQuestionLocal = objectiveItemLocals.get(bestObjectiveLocal);
+            }
+        }
+
+        Integer firstSourceNumberRaw = extractInteger(examQuestions.get(firstQuestionLocal).get("sourceQuestionNumber"));
+        int firstSourceQuestionNumber = (firstSourceNumberRaw == null || firstSourceNumberRaw <= 0)
+            ? 1
+            : firstSourceNumberRaw;
 
         List<ExamSubmission> previousSubmissions = examSubmissionRepository
             .findByStudentEmailAndExamNameAndSubject(studentEmail, distributedExam.getExamName(), distributedExam.getSubject());
@@ -276,6 +322,8 @@ public class StudentController {
         examInfo.put("timeLimit", distributedExam.getTimeLimit() == null ? 60 : distributedExam.getTimeLimit());
         examInfo.put("deadline", formatDeadline(distributedExam.getDeadline()));
         examInfo.put("startTimeMillis", System.currentTimeMillis());
+        examInfo.put("adaptiveEnabled", true);
+        examInfo.put("adaptiveFirstSourceQuestionNumber", firstSourceQuestionNumber);
 
         model.addAttribute("exam", examQuestions);
         model.addAttribute("difficulties", difficulties);
@@ -289,6 +337,154 @@ public class StudentController {
             .max(LocalDateTime::compareTo)
             .orElse(null));
         return "student-exam-paginated";
+    }
+
+    @PostMapping("/adaptive-next")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> adaptiveNext(@RequestParam Map<String, String> formData,
+                                                            Principal principal) {
+        String studentEmail = getStudentEmail(principal);
+        Long distributedExamId = parseLong(formData.get("distributedExamId"));
+
+        if (distributedExamId == null) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "message", "Missing distributed exam id."));
+        }
+
+        DistributedExam distributedExam = distributedExamRepository.findById(distributedExamId).orElse(null);
+        if (distributedExam == null || !sameText(distributedExam.getStudentEmail(), studentEmail)) {
+            return ResponseEntity.status(403).body(Map.of("ok", false, "message", "Exam access denied."));
+        }
+
+        if (distributedExam.isSubmitted() || isMissedExam(distributedExam)) {
+            return ResponseEntity.ok(Map.of("ok", true, "done", true, "message", "Exam is no longer active."));
+        }
+
+        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(distributedExam.getExamId());
+        if (paperOpt.isEmpty()) {
+            return ResponseEntity.ok(Map.of("ok", true, "done", true, "message", "Question bank unavailable."));
+        }
+
+        OriginalProcessedPaper paper = paperOpt.get();
+        List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
+        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
+        Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
+        List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
+
+        List<Integer> askedSourceNumbers = parseAdaptiveAskedSourceNumbers(formData.get("askedOrder"));
+        Map<Integer, String> answersByDisplay = parseAnswersByDisplayNumber(formData);
+
+        Set<Integer> allowedSourceIndexes = new LinkedHashSet<>(selectedIndexes);
+        List<Integer> sanitizedAskedIndexes = new ArrayList<>();
+        Set<Integer> seenAsked = new HashSet<>();
+        for (Integer sourceNumber : askedSourceNumbers) {
+            if (sourceNumber == null || sourceNumber <= 0) {
+                continue;
+            }
+            int sourceIndex = sourceNumber - 1;
+            if (!allowedSourceIndexes.contains(sourceIndex) || !seenAsked.add(sourceIndex)) {
+                continue;
+            }
+            sanitizedAskedIndexes.add(sourceIndex);
+        }
+
+        List<Boolean> objectiveResponses = new ArrayList<>();
+        List<IRT3PLService.ItemParameters> objectiveItemParams = new ArrayList<>();
+        for (int displayPosition = 0; displayPosition < sanitizedAskedIndexes.size(); displayPosition++) {
+            int sourceIndex = sanitizedAskedIndexes.get(displayPosition);
+            if (sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            String key = String.valueOf(sourceIndex + 1);
+            String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
+            String correctAnswerRaw = answerKeyMap.getOrDefault(key, "");
+            String displayQuestion = buildQuestionForDelivery(questionRows.get(sourceIndex), difficulty, correctAnswerRaw, false);
+            List<String> availableChoices = extractChoiceTexts(questionRows.get(sourceIndex), displayQuestion);
+            if (displayQuestion.isBlank()
+                || isOpenEndedQuestion(questionRows.get(sourceIndex), displayQuestion, correctAnswerRaw, availableChoices)) {
+                continue;
+            }
+
+            String studentAnswer = answersByDisplay.getOrDefault(displayPosition + 1, "").trim();
+            if (studentAnswer.isBlank()) {
+                continue;
+            }
+
+            String resolvedCorrectAnswer = resolveCorrectAnswerText(correctAnswerRaw, availableChoices);
+            boolean isCorrect = normalizeAnswer(studentAnswer).equals(normalizeAnswer(resolvedCorrectAnswer));
+
+            objectiveResponses.add(isCorrect);
+            objectiveItemParams.add(resolveItemParameters(questionRows.get(sourceIndex), difficulty));
+        }
+
+        IRT3PLService.AbilityEstimate abilityEstimate = objectiveResponses.isEmpty()
+            ? new IRT3PLService.AbilityEstimate(0.0, 999.0, 0, 0)
+            : irt3PLService.estimateAbility(objectiveResponses, objectiveItemParams);
+
+        List<IRT3PLService.ItemParameters> candidateParams = new ArrayList<>();
+        Set<Integer> usedLocalIndices = new HashSet<>();
+        for (int local = 0; local < selectedIndexes.size(); local++) {
+            int sourceIndex = selectedIndexes.get(local);
+            if (sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                candidateParams.add(buildDefaultItemParamsForDifficulty("Medium"));
+                usedLocalIndices.add(local);
+                continue;
+            }
+
+            String key = String.valueOf(sourceIndex + 1);
+            String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
+            String correctAnswerRaw = answerKeyMap.getOrDefault(key, "");
+            String displayQuestion = buildQuestionForDelivery(questionRows.get(sourceIndex), difficulty, correctAnswerRaw, false);
+            List<String> availableChoices = extractChoiceTexts(questionRows.get(sourceIndex), displayQuestion);
+            if (isOpenEndedQuestion(questionRows.get(sourceIndex), displayQuestion, correctAnswerRaw, availableChoices)) {
+                usedLocalIndices.add(local);
+            }
+
+            if (sanitizedAskedIndexes.contains(sourceIndex)) {
+                usedLocalIndices.add(local);
+            }
+
+            candidateParams.add(resolveItemParameters(questionRows.get(sourceIndex), difficulty));
+        }
+
+        int nextLocalIndex = irt3PLService.selectNextItem(abilityEstimate.getTheta(), candidateParams, usedLocalIndices);
+        if (nextLocalIndex < 0 || nextLocalIndex >= selectedIndexes.size()) {
+            // Fallback: continue with the first remaining unasked item (including open-ended)
+            // so the student can finish the full distributed exam instead of being forced to submit early.
+            Set<Integer> askedSourceIndexSet = new HashSet<>(sanitizedAskedIndexes);
+            for (int local = 0; local < selectedIndexes.size(); local++) {
+                int sourceIndex = selectedIndexes.get(local);
+                if (sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                    continue;
+                }
+                if (!askedSourceIndexSet.contains(sourceIndex)) {
+                    nextLocalIndex = local;
+                    break;
+                }
+            }
+
+            if (nextLocalIndex < 0 || nextLocalIndex >= selectedIndexes.size()) {
+                return ResponseEntity.ok(Map.of(
+                    "ok", true,
+                    "done", true,
+                    "theta", abilityEstimate.getTheta(),
+                    "standardError", abilityEstimate.getStandardError(),
+                    "itemsAnswered", abilityEstimate.getItemsAnswered(),
+                    "correctAnswers", abilityEstimate.getCorrectAnswers()
+                ));
+            }
+        }
+
+        int nextSourceQuestionNumber = selectedIndexes.get(nextLocalIndex) + 1;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("ok", true);
+        payload.put("done", false);
+        payload.put("theta", abilityEstimate.getTheta());
+        payload.put("standardError", abilityEstimate.getStandardError());
+        payload.put("itemsAnswered", abilityEstimate.getItemsAnswered());
+        payload.put("correctAnswers", abilityEstimate.getCorrectAnswers());
+        payload.put("nextSourceQuestionNumber", nextSourceQuestionNumber);
+        return ResponseEntity.ok(payload);
     }
 
     @PostMapping("/submit")
@@ -328,6 +524,7 @@ public class StudentController {
         Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
         Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
         List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
+        List<Integer> questionOrder = resolveQuestionOrderForSubmission(formData, selectedIndexes);
 
         int totalQuestions = 0;
         int score = 0;
@@ -339,7 +536,7 @@ public class StudentController {
         List<Boolean> objectiveResponses = new ArrayList<>();
         List<IRT3PLService.ItemParameters> objectiveItemParams = new ArrayList<>();
 
-        for (Integer sourceIndex : selectedIndexes) {
+        for (Integer sourceIndex : questionOrder) {
             if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
                 continue;
             }
@@ -359,7 +556,7 @@ public class StudentController {
             totalQuestions++;
             String answerKey = "q" + totalQuestions;
             String studentAnswer = formData.getOrDefault(answerKey, "").trim();
-            boolean openEnded = displayQuestion.startsWith("[TEXT_INPUT]");
+            boolean openEnded = isOpenEndedQuestion(questionRows.get(sourceIndex), displayQuestion, correctAnswerRaw, availableChoices);
             boolean isCorrect = false;
             String displayCorrectAnswer = resolvedCorrectAnswer;
 
@@ -374,7 +571,7 @@ public class StudentController {
                     objectiveCorrect++;
                 }
                 objectiveResponses.add(isCorrect);
-                objectiveItemParams.add(buildDefaultItemParamsForDifficulty(difficulty));
+                objectiveItemParams.add(resolveItemParameters(questionRows.get(sourceIndex), difficulty));
             }
 
             Map<String, Object> answerItem = new HashMap<>();
@@ -436,6 +633,7 @@ public class StudentController {
         payload.put("deadline", distributedExam.getDeadline());
         payload.put("studentAnswers", studentAnswers);
         payload.put("finalAnswers", details);
+        payload.put("adaptiveQuestionOrder", formData.getOrDefault("adaptiveQuestionOrder", ""));
         payload.put("irtTheta", abilityEstimate.getTheta());
         payload.put("irtScaledScore", irtScaledScore);
         payload.put("irtStandardError", abilityEstimate.getStandardError());
@@ -444,6 +642,11 @@ public class StudentController {
         submission.setAnswerDetailsJson(gson.toJson(payload));
 
         examSubmissionRepository.save(submission);
+
+        if (incrementExposureCounts(questionRows, questionOrder)) {
+            paper.setOriginalQuestionsJson(gson.toJson(questionRows));
+            originalProcessedPaperRepository.save(paper);
+        }
 
         distributedExam.setSubmitted(true);
         distributedExamRepository.save(distributedExam);
@@ -462,7 +665,8 @@ public class StudentController {
         }
 
         ExamSubmission submission = submissionOpt.get();
-        if (!submission.isResultsReleased()) {
+        boolean resultsLocked = !submission.isResultsReleased();
+        if (resultsLocked) {
             model.addAttribute("infoMessage", "Your teacher has not released the final results yet.");
         }
 
@@ -480,6 +684,7 @@ public class StudentController {
         model.addAttribute("irtStandardError", extractDouble(payload.get("irtStandardError")));
 
         model.addAttribute("submission", submission);
+        model.addAttribute("resultsLocked", resultsLocked);
         model.addAttribute("score", submission.getScore());
         model.addAttribute("total", submission.getTotalQuestions());
         model.addAttribute("percentage", submission.getPercentage());
@@ -857,6 +1062,233 @@ public class StudentController {
         }
     }
 
+    private List<Integer> parseAdaptiveAskedSourceNumbers(String rawAskedOrder) {
+        List<Integer> parsed = parseIntegerListJson(rawAskedOrder);
+        if (!parsed.isEmpty()) {
+            Set<Integer> seen = new LinkedHashSet<>();
+            for (Integer value : parsed) {
+                if (value != null && value > 0) {
+                    seen.add(value);
+                }
+            }
+            return new ArrayList<>(seen);
+        }
+
+        if (rawAskedOrder == null || rawAskedOrder.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        Set<Integer> fallback = new LinkedHashSet<>();
+        for (String token : rawAskedOrder.split("[,\\s]+")) {
+            Long parsedLong = parseLong(token);
+            if (parsedLong != null && parsedLong > 0) {
+                fallback.add(parsedLong.intValue());
+            }
+        }
+        return new ArrayList<>(fallback);
+    }
+
+    private Map<Integer, String> parseAnswersByDisplayNumber(Map<String, String> formData) {
+        Map<Integer, String> answersByDisplay = new HashMap<>();
+        if (formData == null || formData.isEmpty()) {
+            return answersByDisplay;
+        }
+
+        for (Map.Entry<String, String> entry : formData.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || !QUESTION_PARAM_PATTERN.matcher(key).matches()) {
+                continue;
+            }
+
+            Long questionNumber = parseLong(key.substring(1));
+            if (questionNumber == null || questionNumber <= 0) {
+                continue;
+            }
+            answersByDisplay.put(questionNumber.intValue(), entry.getValue() == null ? "" : entry.getValue());
+        }
+        return answersByDisplay;
+    }
+
+    private List<Integer> resolveQuestionOrderForSubmission(Map<String, String> formData, List<Integer> selectedIndexes) {
+        if (selectedIndexes == null || selectedIndexes.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String rawAdaptiveOrder = formData == null ? null : formData.get("adaptiveQuestionOrder");
+        List<Integer> adaptiveSourceNumbers = parseAdaptiveAskedSourceNumbers(rawAdaptiveOrder);
+        if (adaptiveSourceNumbers.isEmpty()) {
+            return new ArrayList<>(selectedIndexes);
+        }
+
+        Set<Integer> allowed = new LinkedHashSet<>(selectedIndexes);
+        List<Integer> ordered = new ArrayList<>();
+        Set<Integer> seen = new HashSet<>();
+
+        for (Integer sourceNumber : adaptiveSourceNumbers) {
+            if (sourceNumber == null || sourceNumber <= 0) {
+                continue;
+            }
+            int sourceIndex = sourceNumber - 1;
+            if (!allowed.contains(sourceIndex) || !seen.add(sourceIndex)) {
+                continue;
+            }
+            ordered.add(sourceIndex);
+        }
+
+        for (Integer sourceIndex : selectedIndexes) {
+            if (sourceIndex == null || seen.contains(sourceIndex)) {
+                continue;
+            }
+            ordered.add(sourceIndex);
+        }
+
+        return ordered;
+    }
+
+    private boolean ensureItemParametersInPlace(List<Map<String, Object>> questionRows,
+                                                Map<String, String> difficultyMap,
+                                                List<Integer> sourceIndexes) {
+        if (questionRows == null || questionRows.isEmpty() || sourceIndexes == null || sourceIndexes.isEmpty()) {
+            return false;
+        }
+
+        boolean changed = false;
+        for (Integer sourceIndex : sourceIndexes) {
+            if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            Map<String, Object> row = questionRows.get(sourceIndex);
+            if (row == null) {
+                continue;
+            }
+
+            String key = String.valueOf(sourceIndex + 1);
+            String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
+            IRT3PLService.ItemParameters params = resolveItemParameters(row, difficulty);
+
+            if (!matchesNumeric(row.get("irtA"), params.getDiscrimination())) {
+                row.put("irtA", params.getDiscrimination());
+                changed = true;
+            }
+            if (!matchesNumeric(row.get("irtB"), params.getDifficulty())) {
+                row.put("irtB", params.getDifficulty());
+                changed = true;
+            }
+            if (!matchesNumeric(row.get("irtC"), params.getGuessing())) {
+                row.put("irtC", params.getGuessing());
+                changed = true;
+            }
+
+            if (extractInteger(row.get("exposureCount")) == null) {
+                row.put("exposureCount", 0);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private boolean incrementExposureCounts(List<Map<String, Object>> questionRows, List<Integer> askedOrder) {
+        if (questionRows == null || questionRows.isEmpty() || askedOrder == null || askedOrder.isEmpty()) {
+            return false;
+        }
+
+        boolean changed = false;
+        for (Integer sourceIndex : askedOrder) {
+            if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            Map<String, Object> row = questionRows.get(sourceIndex);
+            if (row == null) {
+                continue;
+            }
+
+            Integer currentExposure = extractInteger(row.get("exposureCount"));
+            int nextExposure = (currentExposure == null ? 0 : currentExposure) + 1;
+            row.put("exposureCount", nextExposure);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private IRT3PLService.ItemParameters resolveItemParameters(Map<String, Object> questionRow, String difficulty) {
+        IRT3PLService.ItemParameters defaults = buildDefaultItemParamsForDifficulty(difficulty);
+        if (questionRow == null || questionRow.isEmpty()) {
+            return defaults;
+        }
+
+        Double discrimination = firstNonNullDouble(
+            extractDouble(questionRow.get("irtA")),
+            extractDouble(questionRow.get("a")),
+            extractDouble(questionRow.get("discrimination")),
+            defaults.getDiscrimination());
+
+        Double itemDifficulty = firstNonNullDouble(
+            extractDouble(questionRow.get("irtB")),
+            extractDouble(questionRow.get("b")),
+            extractDouble(questionRow.get("difficultyParam")),
+            defaults.getDifficulty());
+
+        Double guessing = firstNonNullDouble(
+            extractDouble(questionRow.get("irtC")),
+            extractDouble(questionRow.get("c")),
+            extractDouble(questionRow.get("guessing")),
+            defaults.getGuessing());
+
+        double clampedA = Math.max(0.30, Math.min(3.00, discrimination == null ? defaults.getDiscrimination() : discrimination));
+        double clampedB = Math.max(-3.00, Math.min(3.00, itemDifficulty == null ? defaults.getDifficulty() : itemDifficulty));
+        double clampedC = Math.max(0.00, Math.min(0.35, guessing == null ? defaults.getGuessing() : guessing));
+        return new IRT3PLService.ItemParameters(clampedA, clampedB, clampedC);
+    }
+
+    private Double firstNonNullDouble(Double... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Double value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesNumeric(Object rawValue, double expected) {
+        Double parsed = extractDouble(rawValue);
+        return parsed != null && Math.abs(parsed - expected) < 0.00001;
+    }
+
+    private boolean isOpenEndedQuestion(Map<String, Object> questionRow,
+                                        String displayQuestion,
+                                        String correctAnswerRaw,
+                                        List<String> availableChoices) {
+        if (displayQuestion != null && displayQuestion.startsWith("[TEXT_INPUT]")) {
+            return true;
+        }
+
+        String normalizedAnswer = normalizeAnswer(correctAnswerRaw);
+        if ("manual_grade".equals(normalizedAnswer)) {
+            return true;
+        }
+
+        if (questionRow != null) {
+            Object choicesObj = questionRow.get("choices");
+            if (choicesObj instanceof List<?> list && list.isEmpty()) {
+                return true;
+            }
+
+            Object questionTypeRaw = questionRow.get("questionType");
+            if (questionTypeRaw != null && "OPEN_ENDED".equalsIgnoreCase(String.valueOf(questionTypeRaw).trim())) {
+                return true;
+            }
+        }
+
+        return availableChoices == null || availableChoices.size() < 2;
+    }
+
     private String buildQuestionForDelivery(Map<String, Object> questionRow,
                                             String difficulty,
                                             String answer,
@@ -892,9 +1324,9 @@ public class StudentController {
         }
 
         StringBuilder builder = new StringBuilder(stem);
-        char letter = 'A';
-        for (String choice : choices) {
-            builder.append("\n").append(letter++).append(") ").append(choice);
+        for (int index = 0; index < choices.size(); index++) {
+            String choiceLabel = generateChoiceLabel(index);
+            builder.append("\n").append(choiceLabel).append(") ").append(choices.get(index));
         }
         return builder.toString();
     }
@@ -1026,24 +1458,85 @@ public class StudentController {
             return "";
         }
 
-        String normalized = cleaned.trim().toUpperCase(Locale.ROOT);
-        String letterOnly = normalized.replaceAll("[^A-Z]", "");
-        if (!letterOnly.isBlank() && letterOnly.length() == 1 && choices != null && !choices.isEmpty()) {
-            int index = letterOnly.charAt(0) - 'A';
-            if (index >= 0 && index < choices.size()) {
-                String mapped = normalizeQuestionHtml(choices.get(index));
-                if (!mapped.isBlank()) {
-                    return mapped;
-                }
+        Integer parsedIndex = parseAnswerChoiceIndex(cleaned, choices == null ? 0 : choices.size());
+        if (parsedIndex != null && choices != null && parsedIndex >= 0 && parsedIndex < choices.size()) {
+            String mapped = normalizeQuestionHtml(choices.get(parsedIndex));
+            if (!mapped.isBlank()) {
+                return mapped;
             }
         }
 
         return cleaned;
     }
 
+    private Integer parseAnswerChoiceIndex(String rawAnswer, int choiceCount) {
+        if (rawAnswer == null || rawAnswer.isBlank() || choiceCount <= 0) {
+            return null;
+        }
+
+        String candidate = rawAnswer.trim().toUpperCase(Locale.ROOT);
+        java.util.regex.Matcher numericMatcher = ANSWER_NUMERIC_TOKEN_PATTERN.matcher(candidate);
+        if (numericMatcher.matches()) {
+            try {
+                int parsed = Integer.parseInt(numericMatcher.group(1));
+                int index = parsed - 1;
+                if (index >= 0 && index < choiceCount) {
+                    return index;
+                }
+            } catch (NumberFormatException ignored) {
+                // Ignore malformed numeric answer tokens and continue label parsing.
+            }
+        }
+
+        java.util.regex.Matcher labelMatcher = ANSWER_LABEL_TOKEN_PATTERN.matcher(candidate);
+        if (labelMatcher.matches()) {
+            int index = choiceLabelToZeroBasedIndex(labelMatcher.group(1));
+            if (index >= 0 && index < choiceCount) {
+                return index;
+            }
+        }
+
+        return null;
+    }
+
+    private int choiceLabelToZeroBasedIndex(String rawLabel) {
+        if (rawLabel == null || rawLabel.isBlank()) {
+            return -1;
+        }
+
+        String upper = rawLabel.trim().toUpperCase(Locale.ROOT);
+        int value = 0;
+        for (int index = 0; index < upper.length(); index++) {
+            char ch = upper.charAt(index);
+            if (ch < 'A' || ch > 'Z') {
+                return -1;
+            }
+            value = (value * 26) + (ch - 'A' + 1);
+        }
+
+        return value - 1;
+    }
+
+    private String generateChoiceLabel(int zeroBasedIndex) {
+        if (zeroBasedIndex < 0) {
+            return "A";
+        }
+
+        int current = zeroBasedIndex;
+        StringBuilder label = new StringBuilder();
+        do {
+            int remainder = current % 26;
+            label.append((char) ('A' + remainder));
+            current = (current / 26) - 1;
+        } while (current >= 0);
+        return label.reverse().toString();
+    }
+
     private String toPlainQuestionText(String value) {
         return String.valueOf(value == null ? "" : value)
             .replaceAll("(?i)<br\\s*/?>", "\\n")
+            .replaceAll("(?i)<sup[^>]*>\\s*(.*?)\\s*</sup>", "^$1")
+            .replaceAll("(?i)<sub[^>]*>\\s*(.*?)\\s*</sub>", "_$1")
             .replaceAll("(?i)</(p|div|li|tr|h[1-6])>", "\\n")
             .replaceAll("(?i)<li[^>]*>", "")
             .replaceAll("<[^>]+>", " ")
@@ -1111,9 +1604,9 @@ public class StudentController {
         }
 
         StringBuilder builder = new StringBuilder(stem);
-        char letter = 'A';
-        for (String choice : choices) {
-            builder.append("\n").append(letter++).append(") ").append(choice);
+        for (int index = 0; index < choices.size(); index++) {
+            String choiceLabel = generateChoiceLabel(index);
+            builder.append("\n").append(choiceLabel).append(") ").append(choices.get(index));
         }
         return builder.toString();
     }
@@ -1155,7 +1648,134 @@ public class StudentController {
             }
         }
 
-        return value.trim();
+        value = convertSupSubHtmlToTokens(value);
+        return normalizeEquationArtifacts(value.trim());
+    }
+
+    private String convertSupSubHtmlToTokens(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String normalized = value;
+        for (int pass = 0; pass < 4; pass++) {
+            String updated = normalized
+                .replaceAll("(?i)<sup[^>]*>\\s*(.*?)\\s*</sup>", "^$1")
+                .replaceAll("(?i)<sub[^>]*>\\s*(.*?)\\s*</sub>", "_$1");
+            if (updated.equals(normalized)) {
+                break;
+            }
+            normalized = updated;
+        }
+
+        return normalized;
+    }
+
+    private String normalizeEquationArtifacts(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        String normalized = text
+            .replace('\u00A0', ' ')
+            .replace("\u200B", "")
+            .replace("\u200C", "")
+            .replace("\u200D", "")
+            .replace("\uFEFF", "")
+            .replace('\u2018', '\'')
+            .replace('\u2019', '\'')
+            .replace('\u201C', '"')
+            .replace('\u201D', '"')
+            .replace('\u2013', '-')
+            .replace('\u2014', '-')
+            .replace('\u2212', '-')
+            .replace('\u2044', '/')
+            .replaceAll("[\\t\\x0B\\f\\r]+", " ")
+            .replaceAll(" *\\n *", "\\n")
+            .replaceAll("\\n{3,}", "\\n\\n");
+
+        normalized = normalized
+            .replace("×", "\\times")
+            .replace("÷", "\\div")
+            .replace("≤", "\\le")
+            .replace("≥", "\\ge")
+            .replace("≠", "\\ne")
+            .replace("≈", "\\approx")
+            .replace("∞", "\\infty")
+            .replace("π", "\\pi")
+            .replace("α", "\\alpha")
+            .replace("β", "\\beta")
+            .replace("γ", "\\gamma")
+            .replace("Δ", "\\Delta")
+            .replace("θ", "\\theta")
+            .replace("∑", "\\sum")
+            .replace("∏", "\\prod")
+            .replace("√", "\\sqrt")
+            .replace("∫", "\\int");
+
+        StringBuilder rebuilt = new StringBuilder();
+        for (int index = 0; index < normalized.length(); index++) {
+            char ch = normalized.charAt(index);
+            String superscript = toSuperscriptToken(ch);
+            if (superscript != null) {
+                rebuilt.append(superscript);
+                continue;
+            }
+
+            String subscript = toSubscriptToken(ch);
+            if (subscript != null) {
+                rebuilt.append(subscript);
+                continue;
+            }
+
+            rebuilt.append(ch);
+        }
+
+        return rebuilt.toString().trim();
+    }
+
+    private String toSuperscriptToken(char value) {
+        return switch (value) {
+            case '\u00B0' -> "^\\circ";
+            case '\u00B9' -> "^1";
+            case '\u00B2' -> "^2";
+            case '\u00B3' -> "^3";
+            case '\u2070' -> "^0";
+            case '\u2074' -> "^4";
+            case '\u2075' -> "^5";
+            case '\u2076' -> "^6";
+            case '\u2077' -> "^7";
+            case '\u2078' -> "^8";
+            case '\u2079' -> "^9";
+            case '\u207A' -> "^+";
+            case '\u207B' -> "^-";
+            case '\u207C' -> "^=";
+            case '\u207D' -> "^(";
+            case '\u207E' -> "^)";
+            case '\u207F' -> "^n";
+            default -> null;
+        };
+    }
+
+    private String toSubscriptToken(char value) {
+        return switch (value) {
+            case '\u2080' -> "_0";
+            case '\u2081' -> "_1";
+            case '\u2082' -> "_2";
+            case '\u2083' -> "_3";
+            case '\u2084' -> "_4";
+            case '\u2085' -> "_5";
+            case '\u2086' -> "_6";
+            case '\u2087' -> "_7";
+            case '\u2088' -> "_8";
+            case '\u2089' -> "_9";
+            case '\u208A' -> "_+";
+            case '\u208B' -> "_-";
+            case '\u208C' -> "_=";
+            case '\u208D' -> "_(";
+            case '\u208E' -> "_)";
+            default -> null;
+        };
     }
 
     private String stripClipboardFragmentMarkers(String value) {
