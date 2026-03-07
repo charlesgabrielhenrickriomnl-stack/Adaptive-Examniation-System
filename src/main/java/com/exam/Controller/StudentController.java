@@ -526,6 +526,9 @@ public class StudentController {
         Map<String, String> difficultyMap = examContent.difficultyMap();
     List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
     List<Integer> questionOrder = resolveQuestionOrderForSubmission(formData, selectedIndexes);
+    OriginalProcessedPaper paper = (distributedExam.getExamId() == null || distributedExam.getExamId().isBlank())
+        ? null
+        : originalProcessedPaperRepository.findByExamId(distributedExam.getExamId()).orElse(null);
 
         int totalQuestions = 0;
         int score = 0;
