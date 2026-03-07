@@ -125,10 +125,34 @@
                     });
                 };
 
+                const setupFlashAutoDismiss = function() {
+                    const alerts = document.querySelectorAll(
+                        '.teacher-content-wrapper .alert.alert-success, .teacher-content-wrapper .alert.alert-danger'
+                    );
+
+                    alerts.forEach(function(alert) {
+                        if (alert.getAttribute('data-sticky') === 'true') {
+                            return;
+                        }
+
+                        window.setTimeout(function() {
+                            alert.style.transition = 'opacity 0.2s ease';
+                            alert.style.opacity = '0';
+                            window.setTimeout(function() {
+                                alert.remove();
+                            }, 200);
+                        }, 1000);
+                    });
+                };
+
                 if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', toFa);
+                    document.addEventListener('DOMContentLoaded', function() {
+                        toFa();
+                        setupFlashAutoDismiss();
+                    });
                 } else {
                     toFa();
+                    setupFlashAutoDismiss();
                 }
             })();
         </script>

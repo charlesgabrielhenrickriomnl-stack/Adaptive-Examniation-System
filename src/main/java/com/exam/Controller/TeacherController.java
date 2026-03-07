@@ -783,7 +783,6 @@ public class TeacherController {
 
         List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
         Map<String, String> difficultiesMap = parseSimpleMapJson(paper.getDifficultiesJson());
-        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
 
         if (questions.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "No questions available in selected exam.");
@@ -822,6 +821,7 @@ public class TeacherController {
             distExam.setDeadline(deadline == null ? "" : deadline);
             distExam.setDistributedAt(java.time.LocalDateTime.now());
             distExam.setSubmitted(false);
+            distExam.setQuestionIndexesJson(gson.toJson(selectedIndexes));
             distributedExamRepository.save(distExam);
             distributed++;
         }
@@ -1132,15 +1132,11 @@ public class TeacherController {
             new InputStreamReader(csvFile.getInputStream(), StandardCharsets.UTF_8))) {
 
             String line;
-            boolean headerChecked = false;
-            int questionColumn = 0;
-            int answerColumn = 5;
+            boolean headerParsed = false;
+            int questionColumn = -1;
+            int answerColumn = -1;
             int difficultyColumn = -1;
             List<Integer> choiceColumns = new ArrayList<>();
-            choiceColumns.add(1);
-            choiceColumns.add(2);
-            choiceColumns.add(3);
-            choiceColumns.add(4);
 
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) {
@@ -1148,70 +1144,31 @@ public class TeacherController {
                 }
 
                 List<String> columns = splitCsvLine(line);
-                if (!headerChecked) {
-                    headerChecked = true;
+                if (!headerParsed) {
+                    headerParsed = true;
 
-                    List<String> normalizedHeaders = new ArrayList<>();
+                    List<String> canonicalHeaders = new ArrayList<>();
                     for (String col : columns) {
-                        normalizedHeaders.add(normalize(col));
+                        canonicalHeaders.add(canonicalizeCsvHeader(col));
                     }
 
-                    int detectedQuestionColumn = -1;
-                    int detectedAnswerColumn = -1;
-                    int detectedDifficultyColumn = -1;
-                    List<Integer> detectedChoiceColumns = new ArrayList<>();
+                    questionColumn = findCsvColumn(canonicalHeaders, "questiontext", "question", "questiontitle");
+                    answerColumn = findCsvColumn(canonicalHeaders, "correctanswer", "answer", "key");
+                    difficultyColumn = findCsvColumn(canonicalHeaders, "difficulty", "level");
 
-                    for (int index = 0; index < normalizedHeaders.size(); index++) {
-                        String header = normalizedHeaders.get(index);
-                        if (header.contains("question")) {
-                            detectedQuestionColumn = index;
-                        }
-                        if (header.contains("answer") || header.equals("key")) {
-                            detectedAnswerColumn = index;
-                        }
-                        if (header.contains("difficulty") || header.contains("level")) {
-                            detectedDifficultyColumn = index;
-                        }
-                        if (header.contains("choice") || header.matches("option\\s*[a-z0-9]+") || header.matches("[a-d]")) {
-                            detectedChoiceColumns.add(index);
+                    for (int index = 0; index < canonicalHeaders.size(); index++) {
+                        String header = canonicalHeaders.get(index);
+                        if (header.startsWith("choice") || header.startsWith("option")) {
+                            choiceColumns.add(index);
                         }
                     }
 
-                    String first = normalizedHeaders.isEmpty() ? "" : normalizedHeaders.get(0);
-                    boolean looksLikeHeader = detectedQuestionColumn >= 0
-                        || detectedAnswerColumn >= 0
-                        || !detectedChoiceColumns.isEmpty()
-                        || first.equals("id")
-                        || first.equals("number")
-                        || first.equals("no");
-
-                    if (looksLikeHeader) {
-                        if (detectedQuestionColumn >= 0) {
-                            questionColumn = detectedQuestionColumn;
-                        } else if ((first.equals("id") || first.equals("number") || first.equals("no")) && normalizedHeaders.size() > 1) {
-                            questionColumn = 1;
-                        }
-
-                        if (detectedAnswerColumn >= 0) {
-                            answerColumn = detectedAnswerColumn;
-                        }
-
-                        if (detectedDifficultyColumn >= 0) {
-                            difficultyColumn = detectedDifficultyColumn;
-                        }
-
-                        if (!detectedChoiceColumns.isEmpty()) {
-                            choiceColumns = detectedChoiceColumns;
-                        } else {
-                            choiceColumns = new ArrayList<>();
-                            int choiceStart = Math.min(questionColumn + 1, Math.max(columns.size() - 1, 0));
-                            int choiceEnd = detectedAnswerColumn > 0 ? detectedAnswerColumn : Math.min(choiceStart + 4, columns.size());
-                            for (int index = choiceStart; index < choiceEnd; index++) {
-                                choiceColumns.add(index);
-                            }
-                        }
-                        continue;
+                    if (questionColumn < 0 || answerColumn < 0 || choiceColumns.isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "Unsupported CSV header. Use: Difficulty,Question_Text,Choice_1...Choice_N,Correct_Answer");
                     }
+
+                    continue;
                 }
 
                 if (columns.isEmpty() || questionColumn < 0 || questionColumn >= columns.size()) {
@@ -1220,14 +1177,10 @@ public class TeacherController {
 
                 Map<String, Object> question = new HashMap<>();
                 String questionText = columns.get(questionColumn) == null ? "" : columns.get(questionColumn).trim();
-                if (looksLikePlaceholderQuestion(questionText, null, null)) {
-                    questionText = pickBestQuestionCandidate(columns, questionColumn, answerColumn);
-                }
                 questionText = normalizeQuestionHtml(questionText);
                 if (questionText.isBlank()) {
                     continue;
                 }
-                question.put("question", questionText);
 
                 List<String> choices = new ArrayList<>();
                 for (Integer index : choiceColumns) {
@@ -1235,14 +1188,27 @@ public class TeacherController {
                         continue;
                     }
                     String choiceValue = normalizeQuestionHtml(normalizeMathSymbols(columns.get(index)));
+                    choiceValue = stripChoiceLabelPrefix(choiceValue);
                     if (!choiceValue.isBlank()) {
                         choices.add(choiceValue);
                     }
                 }
-                question.put("choices", choices);
+
+                boolean openEnded = choices.isEmpty();
+
+                if (openEnded && !questionText.startsWith("[TEXT_INPUT]")) {
+                    questionText = "[TEXT_INPUT]" + questionText;
+                }
+
+                question.put("question", questionText);
+                question.put("choices", openEnded ? new ArrayList<>() : choices);
 
                 if (answerColumn >= 0 && answerColumn < columns.size()) {
-                    question.put("answer", normalizeQuestionHtml(normalizeMathSymbols(columns.get(answerColumn))));
+                    String parsedAnswer = normalizeQuestionHtml(normalizeMathSymbols(columns.get(answerColumn)));
+                    if (openEnded && parsedAnswer.isBlank()) {
+                        parsedAnswer = "MANUAL_GRADE";
+                    }
+                    question.put("answer", parsedAnswer);
                 }
 
                 if (difficultyColumn >= 0 && difficultyColumn < columns.size()) {
@@ -1359,6 +1325,40 @@ public class TeacherController {
             return "Medium";
         }
         return "";
+    }
+
+    private String canonicalizeCsvHeader(String header) {
+        if (header == null) {
+            return "";
+        }
+        return normalize(header).replaceAll("[^a-z0-9]", "");
+    }
+
+    private int findCsvColumn(List<String> canonicalHeaders, String... aliases) {
+        if (canonicalHeaders == null || canonicalHeaders.isEmpty() || aliases == null || aliases.length == 0) {
+            return -1;
+        }
+
+        for (int index = 0; index < canonicalHeaders.size(); index++) {
+            String header = canonicalHeaders.get(index);
+            for (String alias : aliases) {
+                if (alias != null && alias.equals(header)) {
+                    return index;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private String stripChoiceLabelPrefix(String choiceValue) {
+        if (choiceValue == null || choiceValue.isBlank()) {
+            return "";
+        }
+
+        return choiceValue
+            .replaceFirst("(?i)^\\s*\\(?[a-z]\\)?[.)-]\\s*", "")
+            .trim();
     }
 
     private List<String> splitCsvLine(String line) {

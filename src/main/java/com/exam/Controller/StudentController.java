@@ -7,11 +7,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -41,6 +43,8 @@ import com.exam.repository.SubjectRepository;
 import com.exam.repository.UserRepository;
 import com.exam.service.FaceVerificationService;
 import com.exam.service.FaceVerificationSessionKeys;
+import com.exam.service.FisherYatesService;
+import com.exam.service.IRT3PLService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -54,6 +58,8 @@ public class StudentController {
     private static final Pattern QUESTION_PARAM_PATTERN = Pattern.compile("q\\d+");
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<\\/?[a-z][\\s\\S]*?>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ESCAPED_HTML_TAG_PATTERN = Pattern.compile("&lt;\\/?[a-z][\\s\\S]*?&gt;", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHOICE_LINE_PATTERN = Pattern.compile("^\\s*(?:\\(?([A-Z])\\)|([A-Z])[.)])\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHOICE_MARKER_PATTERN = Pattern.compile("(?:\\(\\s*([A-Z])\\s*\\)|\\b([A-Z])[.)])\\s*", Pattern.CASE_INSENSITIVE);
     private static final String ACTIVE_EXAM_SESSION_KEY = "ACTIVE_DISTRIBUTED_EXAM_ID";
 
     private final ExamSubmissionRepository examSubmissionRepository;
@@ -63,6 +69,8 @@ public class StudentController {
     private final OriginalProcessedPaperRepository originalProcessedPaperRepository;
     private final UserRepository userRepository;
     private final FaceVerificationService faceVerificationService;
+    private final FisherYatesService fisherYatesService;
+    private final IRT3PLService irt3PLService;
     private final Gson gson = new Gson();
 
     public StudentController(ExamSubmissionRepository examSubmissionRepository,
@@ -71,7 +79,9 @@ public class StudentController {
                              DistributedExamRepository distributedExamRepository,
                              OriginalProcessedPaperRepository originalProcessedPaperRepository,
                              UserRepository userRepository,
-                             FaceVerificationService faceVerificationService) {
+                             FaceVerificationService faceVerificationService,
+                             FisherYatesService fisherYatesService,
+                             IRT3PLService irt3PLService) {
         this.examSubmissionRepository = examSubmissionRepository;
         this.enrolledStudentRepository = enrolledStudentRepository;
         this.subjectRepository = subjectRepository;
@@ -79,6 +89,8 @@ public class StudentController {
         this.originalProcessedPaperRepository = originalProcessedPaperRepository;
         this.userRepository = userRepository;
         this.faceVerificationService = faceVerificationService;
+        this.fisherYatesService = fisherYatesService;
+        this.irt3PLService = irt3PLService;
     }
 
     @GetMapping("/dashboard")
@@ -223,19 +235,29 @@ public class StudentController {
         List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
         Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
         Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
+        List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
 
         List<String> examQuestions = new ArrayList<>();
         List<String> difficulties = new ArrayList<>();
-        for (int index = 0; index < questionRows.size(); index++) {
-            String key = String.valueOf(index + 1);
+        for (Integer sourceIndex : selectedIndexes) {
+            if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            String key = String.valueOf(sourceIndex + 1);
             String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
             String answer = answerKeyMap.getOrDefault(key, "");
-            String displayQuestion = resolveQuestionDisplay(questionRows.get(index), difficulty, answer);
+            String displayQuestion = buildQuestionForDelivery(questionRows.get(sourceIndex), difficulty, answer, true);
             if (displayQuestion.isBlank()) {
                 continue;
             }
             examQuestions.add(displayQuestion);
             difficulties.add(difficulty.isBlank() ? "Medium" : difficulty);
+        }
+
+        if (examQuestions.isEmpty()) {
+            clearActiveExamSession(session, distributedExam.getId());
+            return "redirect:/student/dashboard";
         }
 
         List<ExamSubmission> previousSubmissions = examSubmissionRepository
@@ -305,50 +327,70 @@ public class StudentController {
         List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
         Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
         Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
+        List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
 
         int totalQuestions = 0;
         int score = 0;
+        int objectiveQuestions = 0;
+        int objectiveCorrect = 0;
         boolean hasOpenEnded = false;
         List<Map<String, Object>> details = new ArrayList<>();
         List<Map<String, Object>> studentAnswers = new ArrayList<>();
+        List<Boolean> objectiveResponses = new ArrayList<>();
+        List<IRT3PLService.ItemParameters> objectiveItemParams = new ArrayList<>();
 
-        for (int index = 0; index < questionRows.size(); index++) {
-            String key = String.valueOf(index + 1);
+        for (Integer sourceIndex : selectedIndexes) {
+            if (sourceIndex == null || sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            String key = String.valueOf(sourceIndex + 1);
             String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
-            String correctAnswer = normalizeAnswer(answerKeyMap.getOrDefault(key, ""));
-            String displayQuestion = resolveQuestionDisplay(questionRows.get(index), difficulty, correctAnswer);
+            String correctAnswerRaw = answerKeyMap.getOrDefault(key, "");
+            String displayQuestion = buildQuestionForDelivery(questionRows.get(sourceIndex), difficulty, correctAnswerRaw, false);
             if (displayQuestion.isBlank()) {
                 continue;
             }
 
+            List<String> availableChoices = extractChoiceTexts(questionRows.get(sourceIndex), displayQuestion);
+            String resolvedCorrectAnswer = resolveCorrectAnswerText(correctAnswerRaw, availableChoices);
+            String correctAnswerNormalized = normalizeAnswer(resolvedCorrectAnswer);
+
             totalQuestions++;
-            String answerKey = "q" + (index + 1);
+            String answerKey = "q" + totalQuestions;
             String studentAnswer = formData.getOrDefault(answerKey, "").trim();
             boolean openEnded = displayQuestion.startsWith("[TEXT_INPUT]");
             boolean isCorrect = false;
+            String displayCorrectAnswer = resolvedCorrectAnswer;
 
             if (openEnded) {
                 hasOpenEnded = true;
-                correctAnswer = "MANUAL_GRADE";
+                displayCorrectAnswer = "MANUAL_GRADE";
             } else {
-                isCorrect = !studentAnswer.isBlank() && normalizeAnswer(studentAnswer).equals(normalizeAnswer(correctAnswer));
+                objectiveQuestions++;
+                isCorrect = !studentAnswer.isBlank() && normalizeAnswer(studentAnswer).equals(correctAnswerNormalized);
                 if (isCorrect) {
                     score++;
+                    objectiveCorrect++;
                 }
+                objectiveResponses.add(isCorrect);
+                objectiveItemParams.add(buildDefaultItemParamsForDifficulty(difficulty));
             }
 
             Map<String, Object> answerItem = new HashMap<>();
-            answerItem.put("questionNumber", index + 1);
+            answerItem.put("questionNumber", totalQuestions);
+            answerItem.put("sourceQuestionNumber", sourceIndex + 1);
             answerItem.put("question", displayQuestion.replace("[TEXT_INPUT]", "").trim());
             answerItem.put("studentAnswer", studentAnswer.isBlank() ? "No answer" : studentAnswer);
-            answerItem.put("correctAnswer", correctAnswer.isBlank() ? "N/A" : correctAnswer);
+            answerItem.put("correctAnswer", displayCorrectAnswer.isBlank() ? "N/A" : displayCorrectAnswer);
             answerItem.put("isCorrect", isCorrect);
             answerItem.put("difficulty", difficulty.isBlank() ? "Medium" : difficulty);
             answerItem.put("type", openEnded ? "OPEN_ENDED" : "MULTIPLE_CHOICE");
             details.add(answerItem);
 
             Map<String, Object> submittedAnswer = new HashMap<>();
-            submittedAnswer.put("questionNumber", index + 1);
+            submittedAnswer.put("questionNumber", totalQuestions);
+            submittedAnswer.put("sourceQuestionNumber", sourceIndex + 1);
             submittedAnswer.put("answer", studentAnswer);
             studentAnswers.add(submittedAnswer);
         }
@@ -358,6 +400,13 @@ public class StudentController {
         }
 
         double percentage = (score * 100.0) / totalQuestions;
+        double objectivePercentage = objectiveQuestions == 0 ? 0.0 : (objectiveCorrect * 100.0) / objectiveQuestions;
+
+        IRT3PLService.AbilityEstimate abilityEstimate = objectiveResponses.isEmpty()
+            ? new IRT3PLService.AbilityEstimate(0.0, 999.0, 0, 0)
+            : irt3PLService.estimateAbility(objectiveResponses, objectiveItemParams);
+        int irtScaledScore = irt3PLService.thetaToScaledScore(abilityEstimate.getTheta(), 500, 100);
+        double thetaNormalizedPercent = clampPercent(((abilityEstimate.getTheta() + 4.0) / 8.0) * 100.0);
 
         ExamSubmission submission = new ExamSubmission();
         submission.setStudentEmail(studentEmail);
@@ -374,10 +423,10 @@ public class StudentController {
         submission.setGraded(!hasOpenEnded);
         submission.setSubmittedAt(LocalDateTime.now());
         submission.setTopicMastery(percentage);
-        submission.setDifficultyResilience(percentage);
-        submission.setAccuracy(percentage);
+        submission.setDifficultyResilience(thetaNormalizedPercent);
+        submission.setAccuracy(objectivePercentage);
         submission.setTimeEfficiency(Math.min(100.0, Math.max(40.0, 100.0 - (totalQuestions * 1.2))));
-        submission.setConfidence(Math.min(100.0, Math.max(50.0, percentage + 10.0)));
+        submission.setConfidence(clampPercent(50.0 + (abilityEstimate.getTheta() * 12.5)));
         submission.setPerformanceCategory(performanceCategory(percentage));
 
         Map<String, Object> payload = new HashMap<>();
@@ -387,6 +436,11 @@ public class StudentController {
         payload.put("deadline", distributedExam.getDeadline());
         payload.put("studentAnswers", studentAnswers);
         payload.put("finalAnswers", details);
+        payload.put("irtTheta", abilityEstimate.getTheta());
+        payload.put("irtScaledScore", irtScaledScore);
+        payload.put("irtStandardError", abilityEstimate.getStandardError());
+        payload.put("irtItemsAnswered", abilityEstimate.getItemsAnswered());
+        payload.put("irtCorrectAnswers", abilityEstimate.getCorrectAnswers());
         submission.setAnswerDetailsJson(gson.toJson(payload));
 
         examSubmissionRepository.save(submission);
@@ -419,6 +473,11 @@ public class StudentController {
         analytics.put("timeEfficiency", submission.getTimeEfficiency());
         analytics.put("confidence", submission.getConfidence());
         analytics.put("performanceCategory", submission.getPerformanceCategory());
+
+        Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
+        model.addAttribute("irtTheta", extractDouble(payload.get("irtTheta")));
+        model.addAttribute("irtScaledScore", extractInteger(payload.get("irtScaledScore")));
+        model.addAttribute("irtStandardError", extractDouble(payload.get("irtStandardError")));
 
         model.addAttribute("submission", submission);
         model.addAttribute("score", submission.getScore());
@@ -598,19 +657,24 @@ public class StudentController {
         Map<String, Object> card = new HashMap<>();
         card.put("name", item.getExamName());
         card.put("type", item.getActivityType() == null ? "Exam" : item.getActivityType());
-        card.put("questionCount", countQuestions(item.getExamId()));
+        card.put("questionCount", countQuestions(item));
         card.put("timeLimit", item.getTimeLimit() == null ? 60 : item.getTimeLimit());
         card.put("deadline", formatDeadline(item.getDeadline()));
         card.put("startUrl", "/student/take-exam/" + item.getId());
         return card;
     }
 
-    private int countQuestions(String examId) {
-        if (examId == null || examId.isBlank()) {
+    private int countQuestions(DistributedExam distributedExam) {
+        if (distributedExam == null || distributedExam.getExamId() == null || distributedExam.getExamId().isBlank()) {
             return 0;
         }
-        return originalProcessedPaperRepository.findByExamId(examId)
-            .map(paper -> parseQuestionsJson(paper.getOriginalQuestionsJson()).size())
+
+        return originalProcessedPaperRepository.findByExamId(distributedExam.getExamId())
+            .map(paper -> {
+                int totalQuestions = parseQuestionsJson(paper.getOriginalQuestionsJson()).size();
+                List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, totalQuestions);
+                return selectedIndexes.size();
+            })
             .orElse(0);
     }
 
@@ -689,6 +753,321 @@ public class StudentController {
         } catch (Exception ignored) {
             return new HashMap<>();
         }
+    }
+
+    private Map<String, Object> parseFlexibleMapJson(String json) {
+        if (json == null || json.isBlank()) {
+            return new HashMap<>();
+        }
+        try {
+            Map<String, Object> parsed = gson.fromJson(json,
+                new TypeToken<Map<String, Object>>() { }.getType());
+            return parsed == null ? new HashMap<>() : parsed;
+        } catch (Exception ignored) {
+            return new HashMap<>();
+        }
+    }
+
+    private Double extractDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value).trim());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Integer extractInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private List<Integer> resolveDistributedQuestionIndexes(DistributedExam distributedExam, int totalQuestions) {
+        if (totalQuestions <= 0) {
+            return new ArrayList<>();
+        }
+
+        List<Integer> parsedIndexes = parseIntegerListJson(
+            distributedExam == null ? null : distributedExam.getQuestionIndexesJson());
+
+        List<Integer> normalized = new ArrayList<>();
+        Set<Integer> seen = new HashSet<>();
+        for (Integer index : parsedIndexes) {
+            if (index == null || index < 0 || index >= totalQuestions) {
+                continue;
+            }
+            if (seen.add(index)) {
+                normalized.add(index);
+            }
+        }
+
+        if (!normalized.isEmpty()) {
+            return normalized;
+        }
+
+        List<Integer> fallback = new ArrayList<>();
+        for (int index = 0; index < totalQuestions; index++) {
+            fallback.add(index);
+        }
+        return fallback;
+    }
+
+    private List<Integer> parseIntegerListJson(String json) {
+        if (json == null || json.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        try {
+            List<?> parsed = gson.fromJson(json, new TypeToken<List<?>>() { }.getType());
+            List<Integer> result = new ArrayList<>();
+            if (parsed == null) {
+                return result;
+            }
+
+            for (Object item : parsed) {
+                if (item instanceof Number number) {
+                    result.add(number.intValue());
+                    continue;
+                }
+                if (item == null) {
+                    continue;
+                }
+                Long parsedLong = parseLong(String.valueOf(item));
+                if (parsedLong != null) {
+                    result.add(parsedLong.intValue());
+                }
+            }
+            return result;
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+    }
+
+    private String buildQuestionForDelivery(Map<String, Object> questionRow,
+                                            String difficulty,
+                                            String answer,
+                                            boolean shuffleChoices) {
+        String resolved = resolveQuestionDisplay(questionRow, difficulty, answer);
+        if (resolved.isBlank()) {
+            return "";
+        }
+
+        boolean openEnded = resolved.startsWith("[TEXT_INPUT]");
+        String body = openEnded ? resolved.substring("[TEXT_INPUT]".length()).trim() : resolved;
+        if (body.isBlank()) {
+            return openEnded ? "[TEXT_INPUT]" : "";
+        }
+
+        if (openEnded) {
+            return "[TEXT_INPUT]" + body;
+        }
+
+        List<String> extractedChoices = extractChoiceTexts(questionRow, body);
+        if (extractedChoices.size() < 2) {
+            return body;
+        }
+
+        List<String> choices = new ArrayList<>(extractedChoices);
+        if (shuffleChoices) {
+            fisherYatesService.shuffle(choices);
+        }
+
+        String stem = extractQuestionStem(body);
+        if (stem.isBlank()) {
+            stem = body;
+        }
+
+        StringBuilder builder = new StringBuilder(stem);
+        char letter = 'A';
+        for (String choice : choices) {
+            builder.append("\n").append(letter++).append(") ").append(choice);
+        }
+        return builder.toString();
+    }
+
+    private List<String> extractChoiceTexts(Map<String, Object> questionRow, String questionText) {
+        List<String> fromRow = extractChoicesFromRow(questionRow);
+        if (fromRow.size() >= 2) {
+            return fromRow;
+        }
+
+        String plain = toPlainQuestionText(questionText);
+        if (plain.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        List<String> lines = new ArrayList<>();
+        for (String line : plain.split("\\n+")) {
+            String trimmed = line.trim();
+            if (!trimmed.isBlank()) {
+                lines.add(trimmed);
+            }
+        }
+
+        List<String> parsed = new ArrayList<>();
+        if (lines.size() > 1) {
+            for (int index = 1; index < lines.size(); index++) {
+                java.util.regex.Matcher lineMatcher = CHOICE_LINE_PATTERN.matcher(lines.get(index));
+                if (!lineMatcher.matches()) {
+                    continue;
+                }
+                String choice = normalizeQuestionHtml(lineMatcher.group(3));
+                if (!choice.isBlank()) {
+                    parsed.add(choice);
+                }
+            }
+        }
+
+        if (parsed.size() >= 2) {
+            return parsed;
+        }
+
+        return extractInlineChoices(plain);
+    }
+
+    private List<String> extractChoicesFromRow(Map<String, Object> questionRow) {
+        Object choicesObj = questionRow == null ? null : questionRow.get("choices");
+        if (!(choicesObj instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+
+        List<String> choices = new ArrayList<>();
+        for (Object item : list) {
+            if (item == null) {
+                continue;
+            }
+            String normalized = normalizeQuestionHtml(String.valueOf(item));
+            if (!normalized.isBlank()) {
+                choices.add(normalized);
+            }
+        }
+        return choices;
+    }
+
+    private List<String> extractInlineChoices(String plainQuestionText) {
+        List<String> choices = new ArrayList<>();
+        java.util.regex.Matcher markerMatcher = CHOICE_MARKER_PATTERN.matcher(plainQuestionText);
+        List<Integer> markerStarts = new ArrayList<>();
+        List<Integer> markerEnds = new ArrayList<>();
+
+        while (markerMatcher.find()) {
+            markerStarts.add(markerMatcher.start());
+            markerEnds.add(markerMatcher.end());
+        }
+
+        if (markerStarts.size() < 2) {
+            return choices;
+        }
+
+        for (int index = 0; index < markerStarts.size(); index++) {
+            int start = markerEnds.get(index);
+            int end = (index + 1 < markerStarts.size()) ? markerStarts.get(index + 1) : plainQuestionText.length();
+            if (start >= end) {
+                continue;
+            }
+            String choice = normalizeQuestionHtml(plainQuestionText.substring(start, end).replaceAll("\\s+", " ").trim());
+            if (!choice.isBlank()) {
+                choices.add(choice);
+            }
+        }
+
+        return choices;
+    }
+
+    private String extractQuestionStem(String questionText) {
+        String plain = toPlainQuestionText(questionText);
+        if (plain.isBlank()) {
+            return "";
+        }
+
+        List<String> lines = new ArrayList<>();
+        for (String line : plain.split("\\n+")) {
+            String trimmed = line.trim();
+            if (!trimmed.isBlank()) {
+                lines.add(trimmed);
+            }
+        }
+
+        if (lines.size() > 1) {
+            java.util.regex.Matcher firstChoiceMatcher = CHOICE_LINE_PATTERN.matcher(lines.get(1));
+            if (firstChoiceMatcher.matches()) {
+                return lines.get(0);
+            }
+        }
+
+        java.util.regex.Matcher inlineMatcher = CHOICE_MARKER_PATTERN.matcher(plain);
+        if (inlineMatcher.find() && inlineMatcher.start() > 0) {
+            String stem = plain.substring(0, inlineMatcher.start()).trim();
+            if (!stem.isBlank()) {
+                return stem;
+            }
+        }
+
+        return lines.isEmpty() ? plain : lines.get(0);
+    }
+
+    private String resolveCorrectAnswerText(String rawCorrectAnswer, List<String> choices) {
+        String cleaned = normalizeQuestionHtml(rawCorrectAnswer);
+        if (cleaned.isBlank()) {
+            return "";
+        }
+
+        String normalized = cleaned.trim().toUpperCase(Locale.ROOT);
+        String letterOnly = normalized.replaceAll("[^A-Z]", "");
+        if (!letterOnly.isBlank() && letterOnly.length() == 1 && choices != null && !choices.isEmpty()) {
+            int index = letterOnly.charAt(0) - 'A';
+            if (index >= 0 && index < choices.size()) {
+                String mapped = normalizeQuestionHtml(choices.get(index));
+                if (!mapped.isBlank()) {
+                    return mapped;
+                }
+            }
+        }
+
+        return cleaned;
+    }
+
+    private String toPlainQuestionText(String value) {
+        return String.valueOf(value == null ? "" : value)
+            .replaceAll("(?i)<br\\s*/?>", "\\n")
+            .replaceAll("(?i)</(p|div|li|tr|h[1-6])>", "\\n")
+            .replaceAll("(?i)<li[^>]*>", "")
+            .replaceAll("<[^>]+>", " ")
+            .replace('\u00A0', ' ')
+            .replace("\r", "\n")
+            .replaceAll("[ \\t]+\\n", "\\n")
+            .replaceAll("\\n{2,}", "\\n")
+            .replaceAll("[ \\t]{2,}", " ")
+            .trim();
+    }
+
+    private IRT3PLService.ItemParameters buildDefaultItemParamsForDifficulty(String difficulty) {
+        String normalized = normalizeDifficulty(difficulty);
+        if ("Easy".equalsIgnoreCase(normalized)) {
+            return new IRT3PLService.ItemParameters(1.00, -0.80, 0.20);
+        }
+        if ("Hard".equalsIgnoreCase(normalized)) {
+            return new IRT3PLService.ItemParameters(1.40, 0.80, 0.20);
+        }
+        return new IRT3PLService.ItemParameters(1.20, 0.00, 0.20);
+    }
+
+    private double clampPercent(double value) {
+        return Math.max(0.0, Math.min(100.0, value));
     }
 
     private String resolveQuestionDisplay(Map<String, Object> questionRow, String difficulty, String answer) {

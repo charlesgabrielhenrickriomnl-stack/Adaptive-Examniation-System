@@ -1,7 +1,13 @@
 package com.exam.entity;
 
-import jakarta.persistence.*;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "distributed_exams")
@@ -37,6 +43,9 @@ public class DistributedExam {
     @Column(nullable = false)
     private boolean submitted = false;
 
+    @Column(name = "question_indexes_json", columnDefinition = "TEXT")
+    private String questionIndexesJson;
+
     // Getters and setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -58,4 +67,6 @@ public class DistributedExam {
     public void setDistributedAt(LocalDateTime distributedAt) { this.distributedAt = distributedAt; }
     public boolean isSubmitted() { return submitted; }
     public void setSubmitted(boolean submitted) { this.submitted = submitted; }
+    public String getQuestionIndexesJson() { return questionIndexesJson; }
+    public void setQuestionIndexesJson(String questionIndexesJson) { this.questionIndexesJson = questionIndexesJson; }
 }

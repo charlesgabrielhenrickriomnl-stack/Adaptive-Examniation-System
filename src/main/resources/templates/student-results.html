@@ -66,6 +66,19 @@
                             <h6><i class="bi bi-chat-left-text"></i> Teacher's Feedback:</h6>
                             <p class="mb-0" th:text="${submission.teacherComments}"></p>
                         </div>
+
+                        <div th:if="${irtTheta != null && irtScaledScore != null}" class="alert alert-secondary mt-4 text-start mb-0">
+                            <h6 class="mb-2"><i class="bi bi-graph-up-arrow"></i> IRT 3PL Analysis</h6>
+                            <div class="small mb-1">
+                                Ability (theta): <strong th:text="${#numbers.formatDecimal(irtTheta, 1, 3)}">0.000</strong>
+                            </div>
+                            <div class="small mb-1">
+                                Scaled score (500 +- 100): <strong th:text="${irtScaledScore}">500</strong>
+                            </div>
+                            <div class="small" th:if="${irtStandardError != null}">
+                                Standard error: <strong th:text="${#numbers.formatDecimal(irtStandardError, 1, 3)}">0.000</strong>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

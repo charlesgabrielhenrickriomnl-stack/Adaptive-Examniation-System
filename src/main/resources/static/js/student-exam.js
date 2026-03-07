@@ -102,7 +102,7 @@ function toPlainQuestionText(value) {
 }
 
 function parseChoiceLine(line) {
-    const match = String(line || '').match(/^\s*(?:\(?([A-H])\)|([A-H])[.)])\s*(.+)$/i);
+    const match = String(line || '').match(/^\s*(?:\(?([A-Z])\)|([A-Z])[.)])\s*(.+)$/i);
     if (!match) {
         return null;
     }
@@ -135,7 +135,7 @@ function extractQuestionParts(rawQuestion) {
         }
     }
 
-    const markerPattern = /(?:\(\s*([A-H])\s*\)|\b([A-H])[.)])\s*/gi;
+    const markerPattern = /(?:\(\s*([A-Z])\s*\)|\b([A-Z])[.)])\s*/gi;
     const markers = [];
     let match;
     while ((match = markerPattern.exec(plain)) !== null) {
