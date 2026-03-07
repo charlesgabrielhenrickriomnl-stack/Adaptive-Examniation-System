@@ -29,7 +29,13 @@ public class UserService {
     /**
      * Register a new student (must use school email)
      */
-    public String registerStudent(String email, String password, String fullName) {
+    public String registerStudent(String email,
+                                  String password,
+                                  String fullName,
+                                  String schoolName,
+                                  String campusName,
+                                  String departmentName,
+                                  String programName) {
         // Validate school email
         if (!isValidSchoolEmail(email)) {
             return "ERROR: Students must use a school email address (@student.school.edu)";
@@ -45,6 +51,10 @@ public class UserService {
         student.setEmail(email);
         student.setPassword(passwordEncoder.encode(password));
         student.setFullName(fullName);
+        student.setSchoolName(schoolName);
+        student.setCampusName(campusName);
+        student.setDepartmentName(departmentName);
+        student.setProgramName(programName);
         student.setRole(User.Role.STUDENT);
         student.setEnabled(false); // User must verify email first
         student.setVerificationToken(UUID.randomUUID().toString());
@@ -60,7 +70,13 @@ public class UserService {
     /**
      * Register a new teacher (any valid email)
      */
-    public String registerTeacher(String email, String password, String fullName) {
+    public String registerTeacher(String email,
+                                  String password,
+                                  String fullName,
+                                  String schoolName,
+                                  String campusName,
+                                  String departmentName,
+                                  String programName) {
         // Check if email already exists
         if (userRepository.existsByEmail(email)) {
             return "ERROR: Email already registered";
@@ -71,6 +87,10 @@ public class UserService {
         teacher.setEmail(email);
         teacher.setPassword(passwordEncoder.encode(password));
         teacher.setFullName(fullName);
+        teacher.setSchoolName(schoolName);
+        teacher.setCampusName(campusName);
+        teacher.setDepartmentName(departmentName);
+        teacher.setProgramName(programName);
         teacher.setRole(User.Role.TEACHER);
         teacher.setEnabled(false); // Teachers also need email verification
         teacher.setVerificationToken(UUID.randomUUID().toString());
@@ -80,6 +100,35 @@ public class UserService {
         // Send verification email
         emailService.sendVerificationEmail(email, fullName, teacher.getVerificationToken());
         
+        return "SUCCESS: Registration successful! Please check your email to verify your account.";
+    }
+
+    public String registerDepartmentAdmin(String email,
+                                          String password,
+                                          String fullName,
+                                          String schoolName,
+                                          String campusName,
+                                          String departmentName,
+                                          String programName) {
+        if (userRepository.existsByEmail(email)) {
+            return "ERROR: Email already registered";
+        }
+
+        User departmentAdmin = new User();
+        departmentAdmin.setEmail(email);
+        departmentAdmin.setPassword(passwordEncoder.encode(password));
+        departmentAdmin.setFullName(fullName);
+        departmentAdmin.setSchoolName(schoolName);
+        departmentAdmin.setCampusName(campusName);
+        departmentAdmin.setDepartmentName(departmentName);
+        departmentAdmin.setProgramName(programName);
+        departmentAdmin.setRole(User.Role.DEPARTMENT_ADMIN);
+        departmentAdmin.setEnabled(false);
+        departmentAdmin.setVerificationToken(UUID.randomUUID().toString());
+
+        userRepository.save(departmentAdmin);
+        emailService.sendVerificationEmail(email, fullName, departmentAdmin.getVerificationToken());
+
         return "SUCCESS: Registration successful! Please check your email to verify your account.";
     }
     
@@ -124,5 +173,24 @@ public class UserService {
             return passwordEncoder.matches(password, user.getPassword()) && user.isEnabled();
         }
         return false;
+    }
+
+    public boolean updateAffiliation(String email,
+                                     String schoolName,
+                                     String campusName,
+                                     String departmentName,
+                                     String programName) {
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return false;
+        }
+
+        User user = userOpt.get();
+        user.setSchoolName(schoolName);
+        user.setCampusName(campusName);
+        user.setDepartmentName(departmentName);
+        user.setProgramName(programName);
+        userRepository.save(user);
+        return true;
     }
 }

@@ -66,7 +66,7 @@ public class StudentFaceVerificationController {
         return "student-face-verification";
     }
 
-    @PostMapping("/confirm")
+    @PostMapping({"", "/confirm"})
     public String confirmFace(Principal principal,
                               HttpSession session,
                               HttpServletRequest request,
@@ -81,7 +81,7 @@ public class StudentFaceVerificationController {
 
         if (!faceVerificationService.isFeatureEnabled()) {
             session.setAttribute(FaceVerificationSessionKeys.FACE_VERIFIED, Boolean.TRUE);
-            return "redirect:/dashboard";
+            return "redirect:" + resolvePostVerifyRedirect(session);
         }
 
         ensurePendingSessionState(user, session, request);
@@ -178,6 +178,6 @@ public class StudentFaceVerificationController {
         if (nextRedirect instanceof String redirect && !redirect.isBlank() && redirect.startsWith("/")) {
             return redirect;
         }
-        return "/dashboard";
+        return "/student/dashboard";
     }
 }

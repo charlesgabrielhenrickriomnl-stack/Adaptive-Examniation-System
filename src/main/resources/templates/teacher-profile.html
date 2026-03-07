@@ -11,7 +11,7 @@
 <body class="homepage-page">
 
 <div class="teacher-layout">
-    <div th:replace="teacher-nav :: teacherNav"></div>
+    <div th:replace="~{teacher-nav :: teacherNav}"></div>
 
     <div class="teacher-content-wrapper">
         <div class="container">
@@ -19,6 +19,9 @@
                 <div class="col-12 col-md-10 col-lg-8">
                     <div class="card upload-card profile-card">
                         <div class="card-body p-4"> 
+
+                            <div th:if="${successMessage}" class="alert alert-success" th:text="${successMessage}"></div>
+                            <div th:if="${errorMessage}" class="alert alert-danger" th:text="${errorMessage}"></div>
 
                             <div class="profile-info-item">
                                 <div class="profile-info-icon"><i class="fa-solid fa-user"></i></div>
@@ -41,6 +44,58 @@
                                 <div class="profile-info-content">
                                     <div class="profile-info-label">Role</div>
                                     <div class="profile-info-value" th:text="${currentUserRole ?: 'TEACHER'}">TEACHER</div>
+                                </div>
+                            </div>
+
+                            <div class="profile-info-item">
+                                <div class="profile-info-icon"><i class="fa-solid fa-school"></i></div>
+                                <div class="profile-info-content">
+                                    <div class="profile-info-label">School</div>
+                                    <div class="profile-info-value" th:text="${currentUserSchool ?: 'Emilio Aguinaldo College'}">Emilio Aguinaldo College</div>
+                                </div>
+                            </div>
+
+                            <div class="profile-info-item">
+                                <div class="profile-info-icon"><i class="fa-solid fa-location-dot"></i></div>
+                                <div class="profile-info-content">
+                                    <div class="profile-info-label">Campus</div>
+                                    <div class="profile-info-value" th:text="${currentUserCampus ?: 'Manila'}">Manila</div>
+                                </div>
+                            </div>
+
+                            <div class="profile-info-item mb-4">
+                                <div class="profile-info-icon"><i class="fa-solid fa-building-columns"></i></div>
+                                <div class="profile-info-content">
+                                    <div class="profile-info-label">Department</div>
+                                    <div class="profile-info-value" th:text="${currentUserDepartment ?: 'Not set'}">Not set</div>
+                                </div>
+                            </div>
+
+                            <div class="profile-info-item mb-4">
+                                <div class="profile-info-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+                                <div class="profile-info-content">
+                                    <div class="profile-info-label">Program</div>
+                                    <div class="profile-info-value" th:text="${currentUserProgram ?: 'Not set'}">Not set</div>
+                                </div>
+                            </div>
+
+                            <div class="profile-info-item mb-4">
+                                <div class="profile-info-icon"><i class="fa-solid fa-pen-to-square"></i></div>
+                                <div class="profile-info-content">
+                                    <div class="profile-info-label">Set Department and Program</div>
+                                    <form th:action="@{/account/update-affiliation}" method="post" class="d-flex gap-2 flex-wrap align-items-center">
+                                        <select class="form-select" id="teacherDepartmentSelect" name="departmentName" style="max-width: 340px;" required>
+                                            <option value="">Select Department</option>
+                                            <option th:each="department : ${departmentOptions}"
+                                                    th:value="${department}"
+                                                    th:text="${department}"
+                                                    th:selected="${department == currentUserDepartment}"></option>
+                                        </select>
+                                        <select class="form-select" id="teacherProgramSelect" name="programName" style="max-width: 380px;">
+                                            <option value="">Select Program</option>
+                                        </select>
+                                        <button type="submit" class="btn btn-outline-primary">Save</button>
+                                    </form>
                                 </div>
                             </div>
 
@@ -111,5 +166,38 @@
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script th:inline="javascript">
+    (function () {
+        const programsByDepartment = /*[[${programOptionsByDepartment}]]*/ {};
+        const currentProgram = /*[[${currentUserProgram}]]*/ '';
+        const departmentSelect = document.getElementById('teacherDepartmentSelect');
+        const programSelect = document.getElementById('teacherProgramSelect');
+        if (!departmentSelect || !programSelect) {
+            return;
+        }
+
+        function syncPrograms() {
+            const selectedDepartment = departmentSelect.value || '';
+            const programs = programsByDepartment[selectedDepartment] || [];
+            const previous = programSelect.value || currentProgram || '';
+
+            programSelect.innerHTML = '<option value="">Select Program</option>';
+            programs.forEach(program => {
+                const option = document.createElement('option');
+                option.value = program;
+                option.textContent = program;
+                programSelect.appendChild(option);
+            });
+
+            if (previous && programs.includes(previous)) {
+                programSelect.value = previous;
+            }
+            programSelect.required = programs.length > 0;
+        }
+
+        departmentSelect.addEventListener('change', syncPrograms);
+        syncPrograms();
+    })();
+</script>
 </body>
 </html>

@@ -113,6 +113,14 @@
                                 <strong th:text="${studentEmail}">student</strong> —
                                 view your enrolled subjects and available exams.
                             </p>
+                            <p class="text-muted small mb-0" th:if="${currentUserSchool != null || currentUserDepartment != null}">
+                                <i class="bi bi-building me-1"></i>
+                                <span th:text="${currentUserSchool != null ? currentUserSchool : 'Emilio Aguinaldo College'}">Emilio Aguinaldo College</span>
+                                <span th:if="${currentUserCampus != null && !#strings.isEmpty(currentUserCampus)}"
+                                      th:text="${' - ' + currentUserCampus}"> - Manila</span>
+                                <span th:if="${currentUserDepartment != null && !#strings.isEmpty(currentUserDepartment)}"
+                                      th:text="${' • ' + currentUserDepartment}"> • Department</span>
+                            </p>
                         </div>
 
                         <div th:if="${hasSubjects}" class="mb-3">

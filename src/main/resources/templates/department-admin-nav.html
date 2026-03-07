@@ -1,0 +1,77 @@
+<!-- Department Admin Sidebar - included in department admin layout -->
+<header class="teacher-sidebar" th:fragment="departmentAdminNav">
+    <div class="nav-brand-row">
+        <a th:href="@{/department-admin/dashboard}" class="text-decoration-none teacher-brand-link">
+            <div class="teacher-brand-logo">
+                <img th:src="@{/images/EAC_Emblem.png}" alt="EAC Emblem" />
+            </div>
+            <div class="teacher-brand-text">
+                <div class="teacher-brand-title">EMILIO AGUINALDO COLLEGE - MANILA</div>
+                <div class="teacher-brand-subtitle">
+                    Department Admin Portal
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <div class="nav-bottom-row">
+        <nav class="teacher-nav-menu" id="departmentAdminNavMenu">
+            <a class="teacher-nav-item" th:href="@{/department-admin/dashboard}" data-path="/department-admin/dashboard">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+            <a class="teacher-nav-item" th:href="@{/department-admin/question-bank}" data-path="/department-admin/question-bank">
+                <i class="bi bi-book"></i> Question Bank
+            </a>
+            <form th:action="@{/logout}" method="post" class="m-0">
+                <button type="submit" class="teacher-nav-item w-100 text-start border-0 bg-transparent">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </button>
+            </form>
+        </nav>
+
+        <script>
+            (function() {
+                const path = window.location.pathname;
+                document.querySelectorAll('#departmentAdminNavMenu .teacher-nav-item[data-path]').forEach(function(link) {
+                    const p = link.getAttribute('data-path');
+                    if (p && path.startsWith(p)) {
+                        link.classList.add('active');
+                    }
+                });
+
+                if (!document.getElementById('fa6-cdn')) {
+                    const fa = document.createElement('link');
+                    fa.id = 'fa6-cdn';
+                    fa.rel = 'stylesheet';
+                    fa.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css';
+                    document.head.appendChild(fa);
+                }
+
+                const iconMap = {
+                    'bi-speedometer2': 'fa-gauge-high',
+                    'bi-book': 'fa-book',
+                    'bi-box-arrow-right': 'fa-right-from-bracket'
+                };
+
+                const toFa = function() {
+                    document.querySelectorAll('.teacher-layout i.bi').forEach(function(icon) {
+                        const classes = Array.from(icon.classList);
+                        const biClass = classes.find(c => c.startsWith('bi-'));
+                        if (!biClass) return;
+
+                        const mapped = iconMap[biClass] || biClass.replace(/^bi-/, 'fa-');
+                        icon.classList.remove('bi');
+                        classes.filter(c => c.startsWith('bi-')).forEach(c => icon.classList.remove(c));
+                        icon.classList.add('fa-solid', mapped);
+                    });
+                };
+
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', toFa);
+                } else {
+                    toFa();
+                }
+            })();
+        </script>
+    </div>
+</header>

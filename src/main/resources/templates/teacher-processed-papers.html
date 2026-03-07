@@ -19,7 +19,7 @@
 </head>
 <body class="homepage-page">
 <div class="teacher-layout">
-    <div th:replace="teacher-nav :: teacherNav"></div>
+    <div th:replace="~{teacher-nav :: teacherNav}"></div>
 
     <div class="teacher-content-wrapper">
         <div class="container-fluid">
@@ -29,8 +29,9 @@
                         <i class="bi bi-journal-check me-2"></i>Processed Papers
                     </h4>
                     <p class="text-muted small mb-0">Teacher-only list of processed exams with subject and upload timestamp.</p>
+                    <p class="text-muted small mb-0">Imported questions are also copied into the shared question bank, and distributed quizzes keep their own snapshot.</p>
                 </div>
-                <a th:href="@{/teacher/homepage}" class="btn btn-sm btn-outline-secondary">
+                <a th:href="@{/teacher/department-dashboard}" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
                 </a>
             </div>
@@ -91,7 +92,7 @@
                                     </a>
                                     <form th:action="@{/teacher/processed-papers/{examId}/delete(examId=${paper.examId})}"
                                           method="post"
-                                          onsubmit="return confirm('Delete this processed paper? This action cannot be undone.');"
+                                          onsubmit="return confirm('Delete this processed paper? Question-bank copies and already distributed quiz snapshots will remain available.');"
                                           class="d-inline">
                                         <button type="submit" class="btn btn-danger processed-action-btn">
                                             <i class="bi bi-trash me-1"></i>Delete

@@ -19,6 +19,18 @@ public class User {
     
     @Column(nullable = false)
     private String fullName;
+
+    @Column(length = 255)
+    private String schoolName;
+
+    @Column(length = 255)
+    private String campusName;
+
+    @Column(length = 255)
+    private String departmentName;
+
+    @Column(length = 255)
+    private String programName;
     
     @Enumerated(EnumType.STRING)
     private Role role; // STUDENT or TEACHER
@@ -65,6 +77,18 @@ public class User {
     
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }
+
+    public String getSchoolName() { return schoolName; }
+    public void setSchoolName(String schoolName) { this.schoolName = schoolName; }
+
+    public String getCampusName() { return campusName; }
+    public void setCampusName(String campusName) { this.campusName = campusName; }
+
+    public String getDepartmentName() { return departmentName; }
+    public void setDepartmentName(String departmentName) { this.departmentName = departmentName; }
+
+    public String getProgramName() { return programName; }
+    public void setProgramName(String programName) { this.programName = programName; }
     
     public Role getRole() { return role; }
     public void setRole(Role role) { this.role = role; }
@@ -89,6 +113,6 @@ public class User {
     
     // Role Enum
     public enum Role {
-        STUDENT, TEACHER
+        STUDENT, TEACHER, DEPARTMENT_ADMIN
     }
 }

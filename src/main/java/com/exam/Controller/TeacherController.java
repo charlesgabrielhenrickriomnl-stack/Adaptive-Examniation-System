@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +25,7 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,15 +37,20 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.util.HtmlUtils;
 
+import com.exam.config.AcademicCatalog;
 import com.exam.entity.DistributedExam;
 import com.exam.entity.EnrolledStudent;
 import com.exam.entity.ExamSubmission;
 import com.exam.entity.OriginalProcessedPaper;
+import com.exam.entity.QuestionBankItem;
 import com.exam.entity.Subject;
+import com.exam.entity.User;
 import com.exam.repository.EnrolledStudentRepository;
 import com.exam.repository.ExamSubmissionRepository;
 import com.exam.repository.OriginalProcessedPaperRepository;
+import com.exam.repository.QuestionBankItemRepository;
 import com.exam.repository.SubjectRepository;
+import com.exam.repository.UserRepository;
 import com.exam.service.FisherYatesService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -55,6 +63,28 @@ public class TeacherController {
     private com.exam.repository.DistributedExamRepository distributedExamRepository;
 
     private static final DateTimeFormatter DEADLINE_DISPLAY_FORMAT = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm");
+
+    private static final String SCHOOL_NAME = "Emilio Aguinaldo College";
+    private static final String CAMPUS_NAME = "Manila";
+    private static final String DEFAULT_IMPORTED_STUDENT_PASSWORD = "Student123!";
+    private static final List<String> DEPARTMENTS = List.of(
+        "ETEEAP",
+        "Arts & Sciences",
+        "Business Education",
+        "Criminology",
+        "Dentistry",
+        "Engineering and Technology",
+        "Graduate School",
+        "Hospitality and Tourism Management",
+        "Marian School of Nursing",
+        "Medical Technology",
+        "Medicine",
+        "Midwifery & Caregiving",
+        "Pharmacy",
+        "Physical, Occupational and Respiratory Therapy",
+        "Radiologic Technology",
+        "Teacher Education"
+    );
 
     private static final Pattern NUMBERED_QUESTION_PATTERN =
         Pattern.compile("(?m)^\\s*(\\d+)\\s*[\\).:-]\\s*(.+)$");
@@ -86,16 +116,71 @@ public class TeacherController {
     private OriginalProcessedPaperRepository originalProcessedPaperRepository;
 
     @Autowired
+    private QuestionBankItemRepository questionBankItemRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
     private FisherYatesService fisherYatesService;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
 
     @GetMapping("/homepage")
     public String homepage(Model model, Principal principal) {
+        return "redirect:/teacher/department-dashboard";
+    }
+
+    @GetMapping("/department-dashboard")
+    public String departmentDashboard(Model model, Principal principal) {
         String teacherEmail = principal != null ? principal.getName() : "";
-        List<Subject> subjects = teacherEmail.isBlank()
+        List<Subject> teacherSubjects = teacherEmail.isBlank()
             ? new ArrayList<>()
             : subjectRepository.findByTeacherEmail(teacherEmail);
-        model.addAttribute("subjects", subjects);
+
+        User currentTeacher = teacherEmail.isBlank() ? null : userRepository.findByEmail(teacherEmail).orElse(null);
+        String departmentName = currentTeacher == null ? "" : (currentTeacher.getDepartmentName() == null ? "" : currentTeacher.getDepartmentName().trim());
+
+        int departmentQuestionCount = 0;
+        int departmentTeacherCount = 0;
+        List<Subject> departmentSubjects = new ArrayList<>();
+        if (!departmentName.isBlank()) {
+            List<String> departmentTeacherEmails = userRepository.findAll().stream()
+                .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
+                .filter(user -> departmentName.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
+                .map(User::getEmail)
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+
+            departmentTeacherCount = departmentTeacherEmails.size();
+            Set<String> departmentTeacherEmailSet = departmentTeacherEmails.stream()
+                .map(value -> value.trim().toLowerCase())
+                .collect(java.util.stream.Collectors.toSet());
+
+            departmentSubjects = subjectRepository.findAll().stream()
+                .filter(subject -> subject != null && subject.getTeacherEmail() != null)
+                .filter(subject -> departmentTeacherEmailSet.contains(subject.getTeacherEmail().trim().toLowerCase()))
+                .sorted(Comparator.comparing(Subject::getSubjectName, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(Subject::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+
+            if (!departmentTeacherEmails.isEmpty()) {
+                departmentQuestionCount = (int) questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+                    .filter(item -> item.getSourceTeacherEmail() != null && !item.getSourceTeacherEmail().isBlank())
+                    .filter(item -> departmentTeacherEmails.stream().anyMatch(email -> email.equalsIgnoreCase(item.getSourceTeacherEmail().trim())))
+                    .count();
+            }
+        }
+
+        model.addAttribute("subjects", teacherSubjects);
+        model.addAttribute("teacherSubjectCount", teacherSubjects.size());
+        model.addAttribute("departmentSubjects", departmentSubjects);
         model.addAttribute("teacherEmail", teacherEmail);
+        model.addAttribute("departmentName", departmentName);
+        model.addAttribute("departmentTeacherCount", departmentTeacherCount);
+        model.addAttribute("departmentQuestionCount", departmentQuestionCount);
+        model.addAttribute("departmentSubjectCount", departmentSubjects.size());
         return "homepage";
     }
 
@@ -165,6 +250,257 @@ public class TeacherController {
         return "teacher-processed-papers";
     }
 
+    @PostMapping("/processed-papers")
+    public String processedPapersPostRedirect(@RequestParam(name = "search", required = false) String search,
+                                              RedirectAttributes redirectAttributes) {
+        if (search != null && !search.isBlank()) {
+            redirectAttributes.addAttribute("search", search);
+        }
+        return "redirect:/teacher/processed-papers";
+    }
+
+    @GetMapping("/question-bank")
+    public String questionBankLegacyRedirect(@RequestParam(name = "search", required = false) String search,
+                                             @RequestParam(name = "subject", required = false) String subject,
+                                             RedirectAttributes redirectAttributes) {
+        if (search != null && !search.isBlank()) {
+            redirectAttributes.addAttribute("search", search);
+        }
+        if (subject != null && !subject.isBlank()) {
+            redirectAttributes.addAttribute("subject", subject);
+        }
+        return "redirect:/teacher/department-dashboard/question-bank";
+    }
+
+    @GetMapping("/department-dashboard/question-bank")
+    public String questionBank(@RequestParam(name = "search", required = false) String search,
+                               @RequestParam(name = "subject", required = false) String subject,
+                               Model model,
+                               Principal principal) {
+        String teacherEmail = principal != null ? principal.getName() : "";
+        List<QuestionBankItem> sourceItems = (subject == null || subject.isBlank())
+            ? questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc()
+            : questionBankItemRepository.findBySubjectIgnoreCaseOrderByCreatedAtDescIdDesc(subject.trim());
+
+        String normalizedSearch = normalize(search);
+        List<Map<String, Object>> questionBankRows = new ArrayList<>();
+        TreeSet<String> subjectOptions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, User> uploaderProfilesByEmail = new HashMap<>();
+
+        for (QuestionBankItem item : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc()) {
+            if (item.getSubject() != null && !item.getSubject().isBlank()) {
+                subjectOptions.add(item.getSubject().trim());
+            }
+        }
+
+        List<String> uploaderEmails = sourceItems.stream()
+            .map(QuestionBankItem::getSourceTeacherEmail)
+            .filter(value -> value != null && !value.isBlank())
+            .distinct()
+            .toList();
+        if (!uploaderEmails.isEmpty()) {
+            for (User user : userRepository.findByEmailIn(uploaderEmails)) {
+                if (user != null && user.getEmail() != null) {
+                    uploaderProfilesByEmail.put(user.getEmail().trim().toLowerCase(), user);
+                }
+            }
+        }
+
+        for (QuestionBankItem item : sourceItems) {
+            String preview = toPlainQuestionText(item.getQuestionText());
+            String uploaderEmail = item.getSourceTeacherEmail() == null ? "" : item.getSourceTeacherEmail().trim();
+            User uploader = uploaderProfilesByEmail.get(uploaderEmail.toLowerCase());
+            String uploaderSchool = uploader == null ? "" : (uploader.getSchoolName() == null ? "" : uploader.getSchoolName().trim());
+            String uploaderCampus = uploader == null ? "" : (uploader.getCampusName() == null ? "" : uploader.getCampusName().trim());
+            String uploaderDepartment = uploader == null ? "" : (uploader.getDepartmentName() == null ? "" : uploader.getDepartmentName().trim());
+
+            String searchable = normalize(preview)
+                + " " + normalize(item.getSourceExamName())
+                + " " + normalize(item.getSubject())
+                + " " + normalize(item.getDifficulty())
+                + " " + normalize(item.getActivityType())
+                + " " + normalize(item.getSourceTeacherEmail())
+                + " " + normalize(uploaderSchool)
+                + " " + normalize(uploaderCampus)
+                + " " + normalize(uploaderDepartment);
+
+            if (!normalizedSearch.isEmpty() && !searchable.contains(normalizedSearch)) {
+                continue;
+            }
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("id", item.getId());
+            row.put("questionPreview", preview);
+            row.put("subject", item.getSubject());
+            row.put("activityType", item.getActivityType());
+            row.put("difficulty", item.getDifficulty());
+            row.put("sourceExamName", item.getSourceExamName());
+            row.put("sourceTeacherEmail", item.getSourceTeacherEmail());
+            row.put("sourceTeacherSchool", uploaderSchool);
+            row.put("sourceTeacherCampus", uploaderCampus);
+            row.put("sourceTeacherDepartment", uploaderDepartment);
+            row.put("sourceExamId", item.getSourceExamId());
+            row.put("choiceCount", parseStringListJson(item.getChoicesJson()).size());
+            row.put("createdAt", item.getCreatedAt());
+            questionBankRows.add(row);
+        }
+
+        Map<String, Map<String, Object>> subjectGroups = new LinkedHashMap<>();
+        for (Map<String, Object> row : questionBankRows) {
+            String subjectName = String.valueOf(row.getOrDefault("subject", "")).trim();
+            if (subjectName.isBlank()) {
+                subjectName = "Uncategorized";
+            }
+
+            Map<String, Object> subjectGroup = subjectGroups.get(subjectName);
+            if (subjectGroup == null) {
+                subjectGroup = new LinkedHashMap<>();
+                subjectGroup.put("subjectName", subjectName);
+                subjectGroup.put("subjectQuestionCount", 0);
+                subjectGroup.put("paperCount", 0);
+                subjectGroup.put("paperGroups", new ArrayList<Map<String, Object>>());
+                subjectGroups.put(subjectName, subjectGroup);
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> paperGroups = (List<Map<String, Object>>) subjectGroup.get("paperGroups");
+
+            String paperName = String.valueOf(row.getOrDefault("sourceExamName", "")).trim();
+            if (paperName.isBlank()) {
+                paperName = "Unknown Paper";
+            }
+            String paperActivity = String.valueOf(row.getOrDefault("activityType", "")).trim();
+            String paperUploader = String.valueOf(row.getOrDefault("sourceTeacherEmail", "")).trim();
+            String paperExamId = String.valueOf(row.getOrDefault("sourceExamId", "")).trim();
+
+            String paperKey = paperName + "|" + paperActivity + "|" + paperUploader + "|" + paperExamId;
+            Map<String, Object> paperGroup = null;
+            for (Map<String, Object> existing : paperGroups) {
+                if (paperKey.equals(existing.get("paperKey"))) {
+                    paperGroup = existing;
+                    break;
+                }
+            }
+
+            if (paperGroup == null) {
+                paperGroup = new LinkedHashMap<>();
+                paperGroup.put("paperKey", paperKey);
+                paperGroup.put("paperName", paperName);
+                paperGroup.put("activityType", paperActivity.isBlank() ? "Exam" : paperActivity);
+                paperGroup.put("uploadedBy", paperUploader);
+                paperGroup.put("school", row.getOrDefault("sourceTeacherSchool", ""));
+                paperGroup.put("campus", row.getOrDefault("sourceTeacherCampus", ""));
+                paperGroup.put("department", row.getOrDefault("sourceTeacherDepartment", ""));
+                paperGroup.put("questionCount", 0);
+                paperGroup.put("questions", new ArrayList<Map<String, Object>>());
+                paperGroups.add(paperGroup);
+
+                int paperCount = ((Integer) subjectGroup.get("paperCount"));
+                subjectGroup.put("paperCount", paperCount + 1);
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> questions = (List<Map<String, Object>>) paperGroup.get("questions");
+            questions.add(row);
+            int paperQuestionCount = ((Integer) paperGroup.get("questionCount"));
+            paperGroup.put("questionCount", paperQuestionCount + 1);
+
+            int subjectQuestionCount = ((Integer) subjectGroup.get("subjectQuestionCount"));
+            subjectGroup.put("subjectQuestionCount", subjectQuestionCount + 1);
+        }
+
+        model.addAttribute("teacherEmail", teacherEmail);
+        model.addAttribute("search", search == null ? "" : search);
+        model.addAttribute("selectedSubject", subject == null ? "" : subject);
+        model.addAttribute("subjectOptions", new ArrayList<>(subjectOptions));
+        model.addAttribute("questionBankItems", questionBankRows);
+        model.addAttribute("questionBankGrouped", new ArrayList<>(subjectGroups.values()));
+        model.addAttribute("totalQuestionBank", questionBankRows.size());
+        model.addAttribute("departmentName", userRepository.findByEmail(teacherEmail)
+            .map(User::getDepartmentName)
+            .orElse(""));
+        return "teacher-question-bank";
+    }
+
+    @PostMapping({"/question-bank/create-exam", "/department-dashboard/question-bank/create-exam"})
+    public String createExamFromQuestionBank(@RequestParam(name = "questionIds", required = false) List<Long> questionIds,
+                                             @RequestParam("examName") String examName,
+                                             @RequestParam("subject") String subject,
+                                             @RequestParam("activityType") String activityType,
+                                             Principal principal,
+                                             RedirectAttributes redirectAttributes) {
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to identify teacher account.");
+            return "redirect:/teacher/department-dashboard/question-bank";
+        }
+
+        if (questionIds == null || questionIds.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Select at least one saved question.");
+            return "redirect:/teacher/department-dashboard/question-bank";
+        }
+
+        String normalizedExamName = examName == null ? "" : examName.trim();
+        if (normalizedExamName.isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Exam name is required.");
+            return "redirect:/teacher/department-dashboard/question-bank";
+        }
+
+        Map<Long, QuestionBankItem> itemsById = new LinkedHashMap<>();
+        for (QuestionBankItem item : questionBankItemRepository.findAllById(questionIds)) {
+            itemsById.put(item.getId(), item);
+        }
+
+        List<Map<String, Object>> questions = new ArrayList<>();
+        Map<String, String> difficulties = new LinkedHashMap<>();
+        Map<String, String> answerKey = new LinkedHashMap<>();
+
+        for (Long questionId : questionIds) {
+            QuestionBankItem item = itemsById.get(questionId);
+            if (item == null) {
+                continue;
+            }
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("question", normalizeQuestionHtml(item.getQuestionText()));
+            row.put("choices", parseStringListJson(item.getChoicesJson()));
+            questions.add(row);
+
+            String key = String.valueOf(questions.size());
+            difficulties.put(key, normalizeDifficulty(item.getDifficulty()));
+            answerKey.put(key, item.getAnswerText() == null ? "" : item.getAnswerText());
+        }
+
+        if (questions.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "No reusable questions were found for the selected items.");
+            return "redirect:/teacher/department-dashboard/question-bank";
+        }
+
+        String normalizedSubject = (subject == null || subject.isBlank())
+            ? Optional.ofNullable(itemsById.get(questionIds.get(0))).map(QuestionBankItem::getSubject).orElse("General")
+            : subject.trim();
+        String normalizedActivityType = (activityType == null || activityType.isBlank())
+            ? Optional.ofNullable(itemsById.get(questionIds.get(0))).map(QuestionBankItem::getActivityType).orElse("Exam")
+            : activityType.trim();
+
+        String examId = "EXAM_" + UUID.randomUUID().toString().replace("-", "");
+        OriginalProcessedPaper paper = new OriginalProcessedPaper(
+            examId,
+            principal.getName(),
+            normalizedExamName,
+            normalizedSubject,
+            normalizedActivityType,
+            "question-bank-mix",
+            gson.toJson(questions),
+            gson.toJson(difficulties),
+            gson.toJson(answerKey)
+        );
+
+        originalProcessedPaperRepository.save(paper);
+        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
+        redirectAttributes.addFlashAttribute("successMessage", "Mixed exam created from the question bank.");
+        return "redirect:/teacher/manage-questions/" + examId;
+    }
+
     @PostMapping("/process-exams-upload")
     public String processExamsUpload(@RequestParam("examCreated") MultipartFile examCreated,
                                      @RequestParam(value = "answerKeyPdf", required = false) MultipartFile answerKeyPdf,
@@ -205,6 +541,7 @@ public class TeacherController {
             );
 
             originalProcessedPaperRepository.save(paper);
+            syncQuestionBankForPaper(paper, questions, difficulties, answerKeyMap);
             redirectAttributes.addFlashAttribute("successMessage", "Exam processed successfully.");
             return "redirect:/teacher/processed-papers";
         } catch (Exception exception) {
@@ -278,6 +615,16 @@ public class TeacherController {
         return "teacher-processed-paper-detail";
     }
 
+    @PostMapping("/processed-papers/{examId}")
+    public String processedPaperDetailPostRedirect(@PathVariable("examId") String examId,
+                                                   @RequestParam(name = "questionSearch", required = false) String questionSearch,
+                                                   RedirectAttributes redirectAttributes) {
+        if (questionSearch != null && !questionSearch.isBlank()) {
+            redirectAttributes.addAttribute("questionSearch", questionSearch);
+        }
+        return "redirect:/teacher/processed-papers/" + examId;
+    }
+
     @PostMapping("/processed-papers/{examId}/delete")
     public String deleteProcessedPaper(@PathVariable("examId") String examId,
                                        Principal principal,
@@ -340,6 +687,7 @@ public class TeacherController {
         if (repaired > 0) {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
             originalProcessedPaperRepository.save(paper);
+            syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
             redirectAttributes.addFlashAttribute("successMessage", repaired + " question row(s) repaired.");
         } else {
             redirectAttributes.addFlashAttribute("successMessage", "No malformed question rows found.");
@@ -466,6 +814,7 @@ public class TeacherController {
         paper.setDifficultiesJson(gson.toJson(difficulties));
         paper.setAnswerKeyJson(gson.toJson(answerKey));
         originalProcessedPaperRepository.save(paper);
+        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
 
         redirectAttributes.addFlashAttribute("successMessage", "Question added successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
@@ -523,6 +872,7 @@ public class TeacherController {
         paper.setDifficultiesJson(gson.toJson(difficulties));
         paper.setAnswerKeyJson(gson.toJson(answerKey));
         originalProcessedPaperRepository.save(paper);
+        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
 
         redirectAttributes.addFlashAttribute("successMessage", "Question updated successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
@@ -560,6 +910,7 @@ public class TeacherController {
         paper.setDifficultiesJson(gson.toJson(difficulties));
         paper.setAnswerKeyJson(gson.toJson(answerKey));
         originalProcessedPaperRepository.save(paper);
+        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
 
         redirectAttributes.addFlashAttribute("successMessage", "Question deleted successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
@@ -613,6 +964,11 @@ public class TeacherController {
         model.addAttribute("enrolledStudents", enrolledStudents);
         model.addAttribute("uploadedExams", uploadedExams);
         model.addAttribute("classroomStats", classroomStats);
+        List<User> allStudents = userRepository.findAll().stream()
+            .filter(user -> user != null && user.getRole() == User.Role.STUDENT)
+            .toList();
+        model.addAttribute("allStudents", allStudents);
+        model.addAttribute("departmentOptions", DEPARTMENTS);
 
         List<DistributedExam> distributedExams = distributedExamRepository.findAll().stream()
             .filter(item -> item.getSubject() != null && item.getSubject().equalsIgnoreCase(subject.getSubjectName()))
@@ -632,6 +988,216 @@ public class TeacherController {
         model.addAttribute("distributedSubmittedCount", distributedSubmittedCount);
         model.addAttribute("distributedNotSubmittedCount", distributedNotSubmittedCount);
         return "subject-classroom";
+    }
+
+    @PostMapping("/enroll-student")
+    public String enrollStudent(@RequestParam("subjectId") Long subjectId,
+                                @RequestParam("studentEmail") String studentEmail,
+                                Principal principal,
+                                RedirectAttributes redirectAttributes) {
+        Optional<Subject> subjectOpt = subjectRepository.findById(subjectId);
+        if (subjectOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Subject not found.");
+            return "redirect:/teacher/subjects";
+        }
+
+        Subject subject = subjectOpt.get();
+        if (!isOwner(principal, subject.getTeacherEmail())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to modify this subject.");
+            return "redirect:/teacher/subjects";
+        }
+
+        String normalizedEmail = studentEmail == null ? "" : studentEmail.trim().toLowerCase();
+        if (normalizedEmail.isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a student.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        Optional<User> studentOpt = userRepository.findByEmail(normalizedEmail);
+        if (studentOpt.isEmpty() || studentOpt.get().getRole() != User.Role.STUDENT) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Student account not found.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        if (enrolledStudentRepository.findByTeacherEmailAndStudentEmailAndSubjectId(subject.getTeacherEmail(), normalizedEmail, subjectId).isPresent()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Student is already enrolled in this subject.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        User student = studentOpt.get();
+        String studentName = (student.getFullName() == null || student.getFullName().isBlank())
+            ? normalizedEmail
+            : student.getFullName().trim();
+        EnrolledStudent enrollment = new EnrolledStudent(
+            subject.getTeacherEmail(),
+            normalizedEmail,
+            studentName,
+            subject.getId(),
+            subject.getSubjectName()
+        );
+        enrolledStudentRepository.save(enrollment);
+
+        redirectAttributes.addFlashAttribute("successMessage", "Student enrolled successfully.");
+        return "redirect:/teacher/subject-classroom/" + subjectId;
+    }
+
+    @PostMapping("/enroll-students/import")
+    public String importStudents(@RequestParam("subjectId") Long subjectId,
+                                 @RequestParam("departmentName") String departmentName,
+                                 @RequestParam(name = "programName", required = false) String programName,
+                                 @RequestParam("studentListFile") MultipartFile studentListFile,
+                                 Principal principal,
+                                 RedirectAttributes redirectAttributes) {
+        Optional<Subject> subjectOpt = subjectRepository.findById(subjectId);
+        if (subjectOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Subject not found.");
+            return "redirect:/teacher/subjects";
+        }
+
+        Subject subject = subjectOpt.get();
+        if (!isOwner(principal, subject.getTeacherEmail())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to modify this subject.");
+            return "redirect:/teacher/subjects";
+        }
+
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        String normalizedProgram = programName == null ? "" : programName.trim();
+        if (normalizedDepartment.isBlank() || !DEPARTMENTS.contains(normalizedDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid department before importing.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        if (!AcademicCatalog.isValidProgram(normalizedDepartment, normalizedProgram)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid program for the selected department.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        if (studentListFile == null || studentListFile.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please upload a CSV file.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        int rowsRead = 0;
+        int createdAccounts = 0;
+        int updatedAccounts = 0;
+        int enrolledCount = 0;
+        int skippedRows = 0;
+        Set<String> seenEmails = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(studentListFile.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+
+                String[] columns = parseCsvRow(line);
+                if (columns.length < 2) {
+                    continue;
+                }
+
+                String rawName = columns[0] == null ? "" : columns[0].trim();
+                String rawEmail = columns[1] == null ? "" : columns[1].trim().toLowerCase();
+                String rawPassword = columns.length >= 3 && columns[2] != null ? columns[2].trim() : "";
+
+                if (rowsRead == 0 && "email".equalsIgnoreCase(rawEmail)) {
+                    rowsRead++;
+                    continue;
+                }
+                rowsRead++;
+
+                if (rawEmail.isBlank() || !rawEmail.contains("@") || !seenEmails.add(rawEmail)) {
+                    skippedRows++;
+                    continue;
+                }
+
+                String effectiveName = rawName.isBlank() ? rawEmail : rawName;
+                String effectivePassword = rawPassword.isBlank() ? generateStudentPassword() : rawPassword;
+
+                User student = userRepository.findByEmail(rawEmail).orElse(null);
+                if (student == null) {
+                    student = new User();
+                    student.setEmail(rawEmail);
+                    student.setPassword(passwordEncoder.encode(effectivePassword));
+                    student.setFullName(effectiveName);
+                    student.setSchoolName(SCHOOL_NAME);
+                    student.setCampusName(CAMPUS_NAME);
+                    student.setDepartmentName(normalizedDepartment);
+                    student.setProgramName(normalizedProgram);
+                    student.setRole(User.Role.STUDENT);
+                    student.setEnabled(true);
+                    student.setVerificationToken(null);
+                    userRepository.save(student);
+                    createdAccounts++;
+                } else if (student.getRole() != User.Role.STUDENT) {
+                    skippedRows++;
+                    continue;
+                } else {
+                    boolean changed = false;
+                    if (!effectiveName.equals(student.getFullName())) {
+                        student.setFullName(effectiveName);
+                        changed = true;
+                    }
+                    if (!SCHOOL_NAME.equals(student.getSchoolName())) {
+                        student.setSchoolName(SCHOOL_NAME);
+                        changed = true;
+                    }
+                    if (!CAMPUS_NAME.equals(student.getCampusName())) {
+                        student.setCampusName(CAMPUS_NAME);
+                        changed = true;
+                    }
+                    if (!normalizedDepartment.equals(student.getDepartmentName())) {
+                        student.setDepartmentName(normalizedDepartment);
+                        changed = true;
+                    }
+                    if (!normalizedProgram.equals(student.getProgramName() == null ? "" : student.getProgramName())) {
+                        student.setProgramName(normalizedProgram);
+                        changed = true;
+                    }
+                    if (!student.isEnabled()) {
+                        student.setEnabled(true);
+                        changed = true;
+                    }
+                    if (!rawPassword.isBlank()) {
+                        student.setPassword(passwordEncoder.encode(rawPassword));
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        userRepository.save(student);
+                        updatedAccounts++;
+                    }
+                }
+
+                if (enrolledStudentRepository.findByTeacherEmailAndStudentEmailAndSubjectId(subject.getTeacherEmail(), rawEmail, subjectId).isEmpty()) {
+                    EnrolledStudent enrollment = new EnrolledStudent(
+                        subject.getTeacherEmail(),
+                        rawEmail,
+                        effectiveName,
+                        subject.getId(),
+                        subject.getSubjectName()
+                    );
+                    enrolledStudentRepository.save(enrollment);
+                    enrolledCount++;
+                }
+            }
+        } catch (IOException exception) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to read the uploaded CSV file.");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        if (rowsRead == 0) {
+            redirectAttributes.addFlashAttribute("errorMessage", "No student rows found. Use CSV format: Full Name,Email,Password(optional).");
+            return "redirect:/teacher/subject-classroom/" + subjectId;
+        }
+
+        String summary = "Import complete: "
+            + enrolledCount + " enrolled, "
+            + createdAccounts + " account(s) created, "
+            + updatedAccounts + " account(s) updated, "
+            + skippedRows + " row(s) skipped.";
+        redirectAttributes.addFlashAttribute("successMessage", summary);
+        return "redirect:/teacher/subject-classroom/" + subjectId;
     }
 
     @GetMapping("/subject-classroom/{id}/distributed-exams")
@@ -807,6 +1373,13 @@ public class TeacherController {
             return "redirect:/teacher/subject-classroom/" + subjectId;
         }
 
+        List<Map<String, Object>> selectedQuestions = buildQuestionSubset(questions, selectedIndexes);
+        Map<String, String> selectedDifficulties = buildSelectedMapSubset(selectedIndexes, difficultiesMap, "Medium");
+        Map<String, String> selectedAnswerKey = buildSelectedMapSubset(selectedIndexes, answerKeyMap, "");
+        String distributedQuestionsJson = gson.toJson(selectedQuestions);
+        String distributedDifficultiesJson = gson.toJson(selectedDifficulties);
+        String distributedAnswerKeyJson = gson.toJson(selectedAnswerKey);
+
         // Exam distribution: Only mark exam as available for students, do not create ExamSubmission here.
         // TODO: Implement a proper distribution record if needed (e.g., a DistributedExam entity/table).
         int distributed = 0;
@@ -821,6 +1394,9 @@ public class TeacherController {
             distExam.setExamName(paper.getExamName());
             distExam.setActivityType(paper.getActivityType());
             distExam.setTimeLimit((timeLimit != null && timeLimit > 0) ? timeLimit : 60);
+            distExam.setQuestionsJson(distributedQuestionsJson);
+            distExam.setDifficultiesJson(distributedDifficultiesJson);
+            distExam.setAnswerKeyJson(distributedAnswerKeyJson);
             distExam.setDeadline(deadline == null ? "" : deadline);
             distExam.setDistributedAt(java.time.LocalDateTime.now());
             distExam.setSubmitted(false);
@@ -1226,6 +1802,34 @@ public class TeacherController {
         } catch (Exception exception) {
             return deadlineRaw;
         }
+    }
+
+    private String[] parseCsvRow(String line) {
+        List<String> columns = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char character = line.charAt(i);
+            if (character == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"');
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (character == ',' && !inQuotes) {
+                columns.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(character);
+            }
+        }
+        columns.add(current.toString().trim());
+        return columns.toArray(new String[0]);
+    }
+
+    private String generateStudentPassword() {
+        return DEFAULT_IMPORTED_STUDENT_PASSWORD;
     }
 
     private boolean isSubmissionCompleted(ExamSubmission submission) {
@@ -1862,6 +2466,112 @@ public class TeacherController {
         return result;
     }
 
+    private void syncQuestionBankForPaper(OriginalProcessedPaper paper,
+                                          List<Map<String, Object>> questions,
+                                          Map<String, String> difficulties,
+                                          Map<String, String> answerKey) {
+        if (paper == null || paper.getExamId() == null || paper.getExamId().isBlank()) {
+            return;
+        }
+
+        questionBankItemRepository.deleteBySourceExamId(paper.getExamId());
+
+        List<QuestionBankItem> items = new ArrayList<>();
+        for (int index = 0; index < questions.size(); index++) {
+            Map<String, Object> row = questions.get(index);
+            if (row == null) {
+                continue;
+            }
+
+            String key = String.valueOf(index + 1);
+            QuestionBankItem item = new QuestionBankItem();
+            item.setSourceExamId(paper.getExamId());
+            item.setSourceExamName(paper.getExamName());
+            item.setSourceTeacherEmail(paper.getTeacherEmail());
+            item.setSubject(paper.getSubject());
+            item.setActivityType(paper.getActivityType());
+            item.setQuestionOrder(index + 1);
+            item.setQuestionText(normalizeQuestionHtml(String.valueOf(row.getOrDefault("question", ""))));
+            item.setChoicesJson(gson.toJson(extractChoices(row)));
+            item.setAnswerText(answerKey.getOrDefault(key, ""));
+            item.setDifficulty(normalizeDifficulty(difficulties.getOrDefault(key, "Medium")));
+            items.add(item);
+        }
+
+        if (!items.isEmpty()) {
+            questionBankItemRepository.saveAll(items);
+        }
+    }
+
+    private List<String> extractChoices(Map<String, Object> row) {
+        List<String> choices = new ArrayList<>();
+        if (row == null) {
+            return choices;
+        }
+
+        Object choicesObj = row.get("choices");
+        if (choicesObj instanceof List<?> list) {
+            for (Object value : list) {
+                String normalizedChoice = normalizeQuestionHtml(value == null ? "" : String.valueOf(value));
+                if (!normalizedChoice.isBlank()) {
+                    choices.add(normalizedChoice);
+                }
+            }
+            return choices;
+        }
+
+        if (choicesObj instanceof String text && !text.isBlank()) {
+            for (String part : text.split("\\r?\\n|,")) {
+                String normalizedChoice = normalizeQuestionHtml(part);
+                if (!normalizedChoice.isBlank()) {
+                    choices.add(normalizedChoice);
+                }
+            }
+        }
+
+        return choices;
+    }
+
+    private List<Map<String, Object>> buildQuestionSubset(List<Map<String, Object>> questions, List<Integer> selectedIndexes) {
+        List<Map<String, Object>> subset = new ArrayList<>();
+        if (questions == null || selectedIndexes == null) {
+            return subset;
+        }
+
+        for (Integer selectedIndex : selectedIndexes) {
+            if (selectedIndex == null || selectedIndex < 0 || selectedIndex >= questions.size()) {
+                continue;
+            }
+
+            Map<String, Object> question = questions.get(selectedIndex);
+            subset.add(question == null ? new LinkedHashMap<>() : new LinkedHashMap<>(question));
+        }
+
+        return subset;
+    }
+
+    private Map<String, String> buildSelectedMapSubset(List<Integer> selectedIndexes,
+                                                       Map<String, String> source,
+                                                       String defaultValue) {
+        Map<String, String> subset = new LinkedHashMap<>();
+        if (selectedIndexes == null) {
+            return subset;
+        }
+
+        for (int index = 0; index < selectedIndexes.size(); index++) {
+            Integer selectedIndex = selectedIndexes.get(index);
+            if (selectedIndex == null || selectedIndex < 0) {
+                continue;
+            }
+
+            String originalKey = String.valueOf(selectedIndex + 1);
+            String newKey = String.valueOf(index + 1);
+            subset.put(newKey, source.getOrDefault(originalKey, defaultValue));
+        }
+
+        return subset;
+    }
+
     private List<Map<String, Object>> parseQuestionsJson(String json) {
         if (json == null || json.isBlank()) {
             return new ArrayList<>();
@@ -1869,6 +2579,19 @@ public class TeacherController {
         try {
             List<Map<String, Object>> parsed = gson.fromJson(json,
                 new TypeToken<List<Map<String, Object>>>() { }.getType());
+            return parsed == null ? new ArrayList<>() : parsed;
+        } catch (Exception exception) {
+            return new ArrayList<>();
+        }
+    }
+
+    private List<String> parseStringListJson(String json) {
+        if (json == null || json.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            List<String> parsed = gson.fromJson(json,
+                new TypeToken<List<String>>() { }.getType());
             return parsed == null ? new ArrayList<>() : parsed;
         } catch (Exception exception) {
             return new ArrayList<>();

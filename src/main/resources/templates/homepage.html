@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teacher Dashboard - ALGO</title>
+    <title>Department Dashboard - ALGO</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" th:href="@{/css/style.css}">
@@ -23,16 +23,104 @@
 <body class="homepage-page">
 
 <div class="teacher-layout">
-    <div th:replace="teacher-nav :: teacherNav"></div>
+    <div th:replace="~{teacher-nav :: teacherNav}"></div>
 
     <!-- Main content area -->
     <div class="teacher-content-wrapper">
 <div class="container">
+    <div class="results-card p-3 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h4 class="fw-bold mb-1" style="color:#7a1022;">
+                    <i class="bi bi-building me-2"></i>Department Dashboard
+                </h4>
+                <p class="text-muted small mb-0">
+                    <span th:text="${departmentName != null && !#strings.isEmpty(departmentName) ? departmentName : 'Department not set'}">Department</span>
+                    <span> • </span>
+                    <span th:text="${departmentTeacherCount} + ' teacher(s)'">0 teacher(s)</span>
+                    <span> • </span>
+                    <span th:text="${departmentSubjectCount} + ' subject(s)'">0 subject(s)</span>
+                    <span> • </span>
+                    <span th:text="${departmentQuestionCount} + ' question bank item(s)'">0 question bank item(s)</span>
+                </p>
+            </div>
+            <a class="btn btn-primary" th:href="@{/teacher/department-dashboard/question-bank}">
+                <i class="bi bi-book me-1"></i> Open Department Question Bank
+            </a>
+        </div>
+    </div>
+
+    <div class="results-card p-3 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0" style="color:#7a1022;">
+                <i class="bi bi-journals me-2"></i>Department Subjects
+            </h5>
+            <span class="badge bg-secondary" th:text="${departmentSubjectCount} + ' total'">0 total</span>
+        </div>
+
+        <div th:if="${departmentSubjects != null && !departmentSubjects.isEmpty()}" class="row g-2 mb-3">
+            <div class="col-md-7">
+                <input type="text" id="departmentSubjectSearch" class="form-control form-control-sm"
+                       placeholder="Search subject, description, or teacher...">
+            </div>
+            <div class="col-md-5">
+                <select id="departmentTeacherFilter" class="form-select form-select-sm">
+                    <option value="">All teachers</option>
+                </select>
+            </div>
+        </div>
+
+        <div th:if="${departmentSubjects == null || departmentSubjects.isEmpty()}" class="text-muted small">
+            No subjects found for this department yet.
+        </div>
+
+        <div th:if="${departmentSubjects != null && !departmentSubjects.isEmpty()}" class="table-responsive">
+            <table id="departmentSubjectsTable" class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th>Subject</th>
+                    <th>Description</th>
+                    <th>Teacher</th>
+                    <th>Created</th>
+                </tr>
+                </thead>
+                <tbody id="departmentSubjectsBody">
+                <tr th:each="departmentSubject : ${departmentSubjects}"
+                    th:attr="data-subject-name=${#strings.toLowerCase(departmentSubject.subjectName != null ? departmentSubject.subjectName : '')},
+                             data-description=${#strings.toLowerCase(departmentSubject.description != null ? departmentSubject.description : '')},
+                             data-teacher-email=${#strings.toLowerCase(departmentSubject.teacherEmail != null ? departmentSubject.teacherEmail : '')}">
+                    <td class="fw-semibold" th:text="${departmentSubject.subjectName}">Subject</td>
+                    <td>
+                        <span th:text="${departmentSubject.description != null && !#strings.isEmpty(departmentSubject.description) ? departmentSubject.description : '-'}">-</span>
+                    </td>
+                    <td>
+                        <small class="text-muted" th:text="${departmentSubject.teacherEmail}">teacher@example.com</small>
+                    </td>
+                    <td>
+                        <small class="text-muted"
+                               th:text="${departmentSubject.createdAt != null ? #temporals.format(departmentSubject.createdAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</small>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="row justify-content-center">
         <div class="col-md-7">
             <div class="card upload-card p-4 mb-4">
                 <div class="card-body text-center">
                     <h3 class="card-title mb-4">EXAMINATION PROCESSING</h3>
+                    <p class="text-muted small mb-2" th:text="${teacherSubjectCount} + ' of your subject(s) available for processing.'">0 of your subject(s) available for processing.</p>
+                    <p class="text-muted small mb-3" th:if="${currentUserSchool != null || currentUserDepartment != null}">
+                        <span th:text="${currentUserSchool != null ? currentUserSchool : 'Emilio Aguinaldo College'}">Emilio Aguinaldo College</span>
+                        <span th:if="${currentUserCampus != null && !#strings.isEmpty(currentUserCampus)}"
+                              th:text="${' - ' + currentUserCampus}"> - Manila</span>
+                        <span th:if="${currentUserDepartment != null && !#strings.isEmpty(currentUserDepartment)}"
+                              th:text="${' • ' + currentUserDepartment}"> • Department</span>
+                        <span th:if="${currentUserProgram != null && !#strings.isEmpty(currentUserProgram)}"
+                            th:text="${' • ' + currentUserProgram}"> • Program</span>
+                    </p>
 
                     <form th:action="@{/teacher/process-exams-upload}" method="post" enctype="multipart/form-data" id="uploadForm">
 
@@ -122,5 +210,49 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script th:src="@{/js/upload-logic.js}"></script>
+<script>
+    (function () {
+        const tableBody = document.getElementById('departmentSubjectsBody');
+        const searchInput = document.getElementById('departmentSubjectSearch');
+        const teacherFilter = document.getElementById('departmentTeacherFilter');
+
+        if (!tableBody || !searchInput || !teacherFilter) {
+            return;
+        }
+
+        const rows = Array.from(tableBody.querySelectorAll('tr'));
+        const teacherValues = Array.from(new Set(rows
+            .map(row => (row.getAttribute('data-teacher-email') || '').trim())
+            .filter(Boolean)))
+            .sort((left, right) => left.localeCompare(right));
+
+        teacherValues.forEach(teacher => {
+            const option = document.createElement('option');
+            option.value = teacher;
+            option.textContent = teacher;
+            teacherFilter.appendChild(option);
+        });
+
+        function applyDepartmentSubjectFilter() {
+            const searchValue = (searchInput.value || '').trim().toLowerCase();
+            const selectedTeacher = (teacherFilter.value || '').trim().toLowerCase();
+
+            rows.forEach(row => {
+                const subject = row.getAttribute('data-subject-name') || '';
+                const description = row.getAttribute('data-description') || '';
+                const teacher = row.getAttribute('data-teacher-email') || '';
+                const matchesSearch = !searchValue
+                    || subject.includes(searchValue)
+                    || description.includes(searchValue)
+                    || teacher.includes(searchValue);
+                const matchesTeacher = !selectedTeacher || teacher === selectedTeacher;
+                row.style.display = (matchesSearch && matchesTeacher) ? '' : 'none';
+            });
+        }
+
+        searchInput.addEventListener('input', applyDepartmentSubjectFilter);
+        teacherFilter.addEventListener('change', applyDepartmentSubjectFilter);
+    })();
+</script>
 </body>
 </html>

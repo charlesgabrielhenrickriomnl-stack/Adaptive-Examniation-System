@@ -4,25 +4,47 @@ document.addEventListener('DOMContentLoaded', function() {
     const email = document.getElementById('email');
     const password = document.getElementById('password');
     const confirmPassword = document.getElementById('confirmPassword');
-    const roleStudent = document.getElementById('roleStudent');
-    const roleTeacher = document.getElementById('roleTeacher');
-    const emailHelp = document.getElementById('emailHelp');
+    const departmentSelect = document.getElementById('departmentName');
+    const programSelect = document.getElementById('programName');
     const passwordHelp = document.getElementById('passwordHelp');
-    
-    // Email validation based on role
-    roleStudent.addEventListener('change', function() {
-        if (this.checked) {
-            emailHelp.classList.remove('d-none');
-            email.placeholder = 'your.name@student.school.edu';
+
+    function syncProgramOptions() {
+        if (!departmentSelect || !programSelect) {
+            return;
         }
-    });
-    
-    roleTeacher.addEventListener('change', function() {
-        if (this.checked) {
-            emailHelp.classList.add('d-none');
-            email.placeholder = 'your.email@school.edu';
+
+        const selectedDepartment = departmentSelect.value || '';
+        const programsMap = window.programsByDepartment || {};
+        const programs = programsMap[selectedDepartment] || [];
+
+        const previousValue = programSelect.value;
+        programSelect.innerHTML = '';
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select Program';
+        programSelect.appendChild(placeholder);
+
+        programs.forEach(program => {
+            const option = document.createElement('option');
+            option.value = program;
+            option.textContent = program;
+            programSelect.appendChild(option);
+        });
+
+        if (previousValue && programs.includes(previousValue)) {
+            programSelect.value = previousValue;
+        } else {
+            programSelect.value = '';
         }
-    });
+
+        programSelect.required = programs.length > 0;
+    }
+
+    if (departmentSelect) {
+        departmentSelect.addEventListener('change', syncProgramOptions);
+        syncProgramOptions();
+    }
     
     // Password confirmation validation
     confirmPassword.addEventListener('input', function() {
@@ -57,23 +79,24 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
         
-        // Validate student email
-        if (roleStudent.checked) {
-            const schoolEmailPattern = /\.edu(\.[a-z]{2})?$/i;
-            if (!schoolEmailPattern.test(email.value)) {
-                e.preventDefault();
-                alert('⚠️ Students must use a school email address (@student.school.edu)');
-                email.focus();
-                return false;
-            }
-        }
-        
         // Validate password length
         if (password.value.length < 6) {
             e.preventDefault();
             alert('⚠️ Password must be at least 6 characters long');
             password.focus();
             return false;
+        }
+
+        if (departmentSelect && programSelect) {
+            const selectedDepartment = departmentSelect.value || '';
+            const programsMap = window.programsByDepartment || {};
+            const programs = programsMap[selectedDepartment] || [];
+            if (programs.length > 0 && !programSelect.value) {
+                e.preventDefault();
+                alert('⚠️ Please select a program for your department');
+                programSelect.focus();
+                return false;
+            }
         }
         
         return true;

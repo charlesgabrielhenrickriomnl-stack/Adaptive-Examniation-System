@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Department Admin Question Bank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body class="homepage-page">
+<div class="teacher-layout">
+    <div th:replace="~{department-admin-nav :: departmentAdminNav}"></div>
+
+    <div class="teacher-content-wrapper">
+        <div class="container py-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                    <h3 class="fw-bold mb-1" style="color:#7a1022;">
+                        <i class="bi bi-book me-2"></i>Department Question Bank
+                    </h3>
+                    <p class="text-muted mb-0" th:text="${departmentName}">Department</p>
+                </div>
+                <a class="btn btn-outline-secondary" th:href="@{/department-admin/dashboard}">
+                    <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
+                </a>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <form class="row g-2" method="get" th:action="@{/department-admin/question-bank}">
+                        <input type="hidden" name="size" th:value="${size}">
+                        <div class="col-md-9">
+                            <input type="text" class="form-control" name="search" th:value="${search}"
+                                   placeholder="Search question, subject, paper, or teacher...">
+                        </div>
+                        <div class="col-md-3 d-grid">
+                            <button type="submit" class="btn btn-primary">Search</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span class="fw-semibold">Full Question Bank</span>
+                    <small class="text-muted" th:text="${total} + ' total item(s)'">0 total item(s)</small>
+                </div>
+                <div class="card-body p-0">
+                    <div th:if="${questionBankRows == null || questionBankRows.isEmpty()}" class="p-3 text-muted small">
+                        No question bank items found.
+                    </div>
+                    <div th:if="${questionBankRows != null && !questionBankRows.isEmpty()}" class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>Question</th>
+                                <th>Subject</th>
+                                <th>Source Paper</th>
+                                <th>Difficulty</th>
+                                <th>Teacher</th>
+                                <th>Department</th>
+                                <th>Program</th>
+                                <th>Saved</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="item : ${questionBankRows}" th:id="'q-' + ${item.id}">
+                                <td>
+                                    <div class="fw-semibold" th:text="${item.questionPreview}">Question preview</div>
+                                    <small class="text-muted" th:text="${item.questionText}">Full question</small>
+                                </td>
+                                <td th:text="${item.subject}">Subject</td>
+                                <td th:text="${item.sourceExamName}">Paper</td>
+                                <td><span class="badge bg-secondary" th:text="${item.difficulty}">Medium</span></td>
+                                <td th:text="${item.sourceTeacherEmail}">teacher@example.com</td>
+                                <td th:text="${item.sourceTeacherDepartment != null && !#strings.isEmpty(item.sourceTeacherDepartment) ? item.sourceTeacherDepartment : '-'}">-</td>
+                                <td th:text="${item.sourceTeacherProgram != null && !#strings.isEmpty(item.sourceTeacherProgram) ? item.sourceTeacherProgram : '-'}">-</td>
+                                <td>
+                                    <small class="text-muted"
+                                           th:text="${item.createdAt != null ? #temporals.format(item.createdAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</small>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <a class="btn btn-sm btn-outline-secondary"
+                   th:href="@{/department-admin/question-bank(page=${page-1},size=${size},search=${search})}"
+                   th:classappend="${!hasPrev} ? ' disabled' : ''">Previous</a>
+                <span class="small text-muted" th:text="'Page ' + ${page + 1} + ' of ' + ${totalPages}">Page 1 of 1</span>
+                <a class="btn btn-sm btn-outline-secondary"
+                   th:href="@{/department-admin/question-bank(page=${page+1},size=${size},search=${search})}"
+                   th:classappend="${!hasNext} ? ' disabled' : ''">Next</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

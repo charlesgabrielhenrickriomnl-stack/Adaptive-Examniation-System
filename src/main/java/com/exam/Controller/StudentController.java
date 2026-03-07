@@ -229,21 +229,23 @@ public class StudentController {
             return "redirect:/student/face-verification";
         }
 
-        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(distributedExam.getExamId());
-        if (paperOpt.isEmpty()) {
+        ExamContentSnapshot examContent = loadExamContent(distributedExam);
+        if (examContent == null) {
             return "redirect:/student/dashboard";
         }
 
         session.setAttribute(ACTIVE_EXAM_SESSION_KEY, distributedExam.getId());
 
-        OriginalProcessedPaper paper = paperOpt.get();
-        List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
-        Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
-        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
-        List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
+        List<Map<String, Object>> questionRows = examContent.questionRows();
+        Map<String, String> difficultyMap = examContent.difficultyMap();
+        Map<String, String> answerKeyMap = examContent.answerKeyMap();
+    List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
+    OriginalProcessedPaper paper = (distributedExam.getExamId() == null || distributedExam.getExamId().isBlank())
+        ? null
+        : originalProcessedPaperRepository.findByExamId(distributedExam.getExamId()).orElse(null);
 
         boolean itemMetadataChanged = ensureItemParametersInPlace(questionRows, difficultyMap, selectedIndexes);
-        if (itemMetadataChanged) {
+        if (itemMetadataChanged && paper != null) {
             paper.setOriginalQuestionsJson(gson.toJson(questionRows));
             originalProcessedPaperRepository.save(paper);
         }
@@ -514,17 +516,16 @@ public class StudentController {
             return "redirect:/student/dashboard";
         }
 
-        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(distributedExam.getExamId());
-        if (paperOpt.isEmpty()) {
+        ExamContentSnapshot examContent = loadExamContent(distributedExam);
+        if (examContent == null) {
             return "redirect:/student/dashboard";
         }
 
-        OriginalProcessedPaper paper = paperOpt.get();
-        List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
-        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
-        Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
-        List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
-        List<Integer> questionOrder = resolveQuestionOrderForSubmission(formData, selectedIndexes);
+        List<Map<String, Object>> questionRows = examContent.questionRows();
+        Map<String, String> answerKeyMap = examContent.answerKeyMap();
+        Map<String, String> difficultyMap = examContent.difficultyMap();
+    List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, questionRows.size());
+    List<Integer> questionOrder = resolveQuestionOrderForSubmission(formData, selectedIndexes);
 
         int totalQuestions = 0;
         int score = 0;
@@ -870,11 +871,21 @@ public class StudentController {
     }
 
     private int countQuestions(DistributedExam distributedExam) {
-        if (distributedExam == null || distributedExam.getExamId() == null || distributedExam.getExamId().isBlank()) {
+        if (distributedExam == null) {
             return 0;
         }
 
-        return originalProcessedPaperRepository.findByExamId(distributedExam.getExamId())
+        List<Map<String, Object>> snapshotQuestions = parseQuestionsJson(distributedExam.getQuestionsJson());
+        if (!snapshotQuestions.isEmpty()) {
+            return snapshotQuestions.size();
+        }
+
+        String examId = distributedExam.getExamId();
+        if (examId == null || examId.isBlank()) {
+            return 0;
+        }
+
+        return originalProcessedPaperRepository.findByExamId(examId)
             .map(paper -> {
                 int totalQuestions = parseQuestionsJson(paper.getOriginalQuestionsJson()).size();
                 List<Integer> selectedIndexes = resolveDistributedQuestionIndexes(distributedExam, totalQuestions);
@@ -1561,6 +1572,33 @@ public class StudentController {
 
     private double clampPercent(double value) {
         return Math.max(0.0, Math.min(100.0, value));
+    }
+
+    private ExamContentSnapshot loadExamContent(DistributedExam distributedExam) {
+        List<Map<String, Object>> questionRows = parseQuestionsJson(distributedExam.getQuestionsJson());
+        Map<String, String> difficultyMap = parseSimpleMapJson(distributedExam.getDifficultiesJson());
+        Map<String, String> answerKeyMap = parseSimpleMapJson(distributedExam.getAnswerKeyJson());
+
+        if (!questionRows.isEmpty()) {
+            return new ExamContentSnapshot(questionRows, difficultyMap, answerKeyMap);
+        }
+
+        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(distributedExam.getExamId());
+        if (paperOpt.isEmpty()) {
+            return null;
+        }
+
+        OriginalProcessedPaper paper = paperOpt.get();
+        return new ExamContentSnapshot(
+            parseQuestionsJson(paper.getOriginalQuestionsJson()),
+            parseSimpleMapJson(paper.getDifficultiesJson()),
+            parseSimpleMapJson(paper.getAnswerKeyJson())
+        );
+    }
+
+    private record ExamContentSnapshot(List<Map<String, Object>> questionRows,
+                                       Map<String, String> difficultyMap,
+                                       Map<String, String> answerKeyMap) {
     }
 
     private String resolveQuestionDisplay(Map<String, Object> questionRow, String difficulty, String answer) {

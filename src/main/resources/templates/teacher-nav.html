@@ -1,7 +1,7 @@
 <!-- Teacher Sidebar - included in teacher layout -->
 <header class="teacher-sidebar" th:fragment="teacherNav">
     <div class="nav-brand-row">
-        <a th:href="@{/teacher/homepage}" class="text-decoration-none teacher-brand-link">
+        <a th:href="@{/teacher/department-dashboard}" class="text-decoration-none teacher-brand-link">
             <div class="teacher-brand-logo">
                 <img th:src="@{/images/EAC_Emblem.png}" alt="EAC Emblem" />
             </div>
@@ -16,8 +16,8 @@
 
     <div class="nav-bottom-row">
         <nav class="teacher-nav-menu" id="teacherNavMenu">
-            <a class="teacher-nav-item" th:href="@{/teacher/homepage}" data-path="/teacher/homepage">
-                <i class="fa-solid fa-house"></i> Dashboard
+            <a class="teacher-nav-item" th:href="@{/teacher/department-dashboard}" data-path="/teacher/department-dashboard">
+                <i class="fa-solid fa-house"></i> Department Dashboard
             </a>
             <a class="teacher-nav-item" th:href="@{/teacher/subjects}" data-path="/teacher/subjects">
                 <i class="bi bi-journals"></i> Subjects

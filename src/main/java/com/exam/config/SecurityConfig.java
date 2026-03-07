@@ -37,6 +37,7 @@ public class SecurityConfig {
                 .requestMatchers("/", "/login**", "/register**", "/verify**", "/css/**", "/js/**", "/images/**", "/error").permitAll()
                 .requestMatchers("/teacher/**").hasAuthority("TEACHER")
                 .requestMatchers("/student/**").hasAuthority("STUDENT")
+                .requestMatchers("/department-admin/**").hasAuthority("DEPARTMENT_ADMIN")
                 .anyRequest().authenticated()
             )
             .formLogin(form -> form
