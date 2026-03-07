@@ -208,6 +208,39 @@ body {
     max-width: 1200px;
 }
 
+/* Wide layout mode for teacher pages that need more horizontal workspace. */
+.teacher-wide-page .teacher-content-wrapper {
+    padding: 1.1rem 1.25rem 1.4rem 1.25rem;
+}
+
+.teacher-wide-page .teacher-content-wrapper > .container,
+.teacher-wide-page .teacher-content-wrapper > .container-fluid {
+    max-width: 100%;
+    width: 100%;
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+}
+
+.teacher-wide-page .main-container {
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0.4rem 0.3rem 1rem;
+}
+
+@media (max-width: 992px) {
+    .teacher-wide-page .teacher-content-wrapper {
+        padding: 0.95rem 0.7rem 1.1rem 0.7rem;
+    }
+
+    .teacher-wide-page .teacher-content-wrapper > .container,
+    .teacher-wide-page .teacher-content-wrapper > .container-fluid,
+    .teacher-wide-page .main-container {
+        padding-left: 0.15rem;
+        padding-right: 0.15rem;
+    }
+}
+
 .modal-backdrop {
     z-index: 1990 !important;
 }

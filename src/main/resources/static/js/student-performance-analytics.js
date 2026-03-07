@@ -51,10 +51,9 @@ function initializeRadarChart() {
         confidence
     });
     
-    // Create gradient
-    const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(102, 126, 234, 0.6)');
-    gradient.addColorStop(1, 'rgba(118, 75, 162, 0.6)');
+        const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(122, 16, 34, 0.45)');
+        gradient.addColorStop(1, 'rgba(212, 163, 42, 0.40)');
     
     // Create the radar chart
     const radarChart = new Chart(ctx, {
@@ -77,12 +76,12 @@ function initializeRadarChart() {
                     confidence
                 ],
                 backgroundColor: gradient,
-                borderColor: 'rgba(102, 126, 234, 1)',
+                    borderColor: 'rgba(122, 16, 34, 1)',
                 borderWidth: 3,
-                pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                    pointBackgroundColor: 'rgba(122, 16, 34, 1)',
                 pointBorderColor: '#fff',
                 pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgba(102, 126, 234, 1)',
+                    pointHoverBorderColor: 'rgba(122, 16, 34, 1)',
                 pointRadius: 6,
                 pointHoverRadius: 8
             }]
@@ -109,14 +108,14 @@ function initializeRadarChart() {
                         size: 18,
                         weight: 'bold'
                     },
-                    color: '#667eea',
+                        color: '#7a1022',
                     padding: 20
                 },
                 tooltip: {
                     backgroundColor: 'rgba(0, 0, 0, 0.8)',
                     titleColor: '#fff',
                     bodyColor: '#fff',
-                    borderColor: '#667eea',
+                    borderColor: '#7a1022',
                     borderWidth: 2,
                     padding: 12,
                     displayColors: true,

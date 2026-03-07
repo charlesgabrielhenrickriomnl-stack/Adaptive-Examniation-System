@@ -118,111 +118,6 @@
                 </div>
             </div>
 
-            <div class="section-card">
-                <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom flex-wrap gap-2">
-                    <div class="section-title mb-0" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">
-                        <i class="bi bi-clipboard-data"></i> Students &amp; Grades
-                    </div>
-                    <input type="text" id="classroomStudentSearch" class="form-control form-control-sm"
-                           placeholder="🔎 Search student name or email..." style="max-width:260px;">
-                </div>
-
-                <div id="classroomStudentPanelList" th:if="${classroomStudentSummary != null && !classroomStudentSummary.isEmpty()}">
-                    <div th:each="student,si : ${classroomStudentSummary}" class="student-panel"
-                         th:attr="data-search-key=${#strings.toLowerCase(student.studentName) + ' ' + #strings.toLowerCase(student.studentEmail)}">
-
-                        <div class="student-panel-header"
-                             th:attr="data-bs-toggle='collapse',
-                                      data-bs-target='#classroomCollapse' + ${si.index},
-                                      aria-expanded='false',
-                                      aria-controls='classroomCollapse' + ${si.index}">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="student-avatar" th:text="${#strings.substring(student.studentName, 0, 1)}">S</div>
-                                <div>
-                                    <div class="fw-semibold" th:text="${student.studentName}">Student Name</div>
-                                    <div class="text-muted small">
-                                        <i class="bi bi-envelope me-1"></i>
-                                        <span th:text="${student.studentEmail}">email@example.com</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                                <span class="badge bg-primary rounded-pill"
-                                      th:text="${student.totalSubmissions} + ' submission' + (${student.totalSubmissions != 1} ? 's' : '')">0 submissions</span>
-                                <span class="badge bg-success" th:if="${student.gradedCount > 0}"
-                                      th:text="${student.gradedCount} + ' graded'">0 graded</span>
-                                <span class="badge bg-warning text-dark" th:if="${student.pendingCount > 0}"
-                                      th:text="${student.pendingCount} + ' pending'">0 pending</span>
-                                <span class="fw-semibold text-secondary" th:if="${student.gradedCount > 0}"
-                                      th:text="'Avg: ' + ${student.averageScore} + '%'">Avg: 0%</span>
-                                <i class="bi bi-chevron-down text-muted"></i>
-                            </div>
-                        </div>
-
-                        <div th:id="'classroomCollapse' + ${si.index}" class="collapse">
-                            <div class="p-3">
-                                <div th:if="${student.submissions == null || student.submissions.isEmpty()}" class="text-center text-muted py-3">
-                                    <i class="bi bi-inbox"></i> No submissions yet.
-                                </div>
-
-                                <div th:if="${student.submissions != null && !student.submissions.isEmpty()}" class="table-responsive">
-                                    <table class="table table-sm table-hover align-middle mb-0 sub-inner-table">
-                                        <thead class="table-light">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Exam</th>
-                                            <th>Type</th>
-                                            <th>Score</th>
-                                            <th>Status</th>
-                                            <th>Submitted</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        <tr th:each="sub,idx : ${student.submissions}">
-                                            <td class="text-muted" th:text="${idx.count}">1</td>
-                                            <td>
-                                                <span class="fw-semibold" th:text="${sub.examName}">Exam</span>
-                                                <span class="badge bg-light text-dark border ms-1" th:text="${sub.subject}">Subject</span>
-                                            </td>
-                                            <td>
-                                                <span class="badge" th:classappend="${sub.activityType == 'Exam' ? 'bg-danger' : 'bg-primary'}"
-                                                      th:text="${sub.activityType}">Type</span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-secondary" th:text="${sub.score + ' / ' + sub.totalQuestions}">0 / 0</span>
-                                                <span class="text-muted ms-1"
-                                                      th:text="'(' + ${#numbers.formatDecimal(sub.percentage, 1, 1)} + '%)'">(0%)</span>
-                                            </td>
-                                            <td>
-                                                <span th:if="${sub.graded}" class="badge bg-success">Graded</span>
-                                                <span th:unless="${sub.graded}" class="badge bg-warning text-dark">Pending</span>
-                                            </td>
-                                            <td>
-                                                <small class="text-nowrap" th:text="${#temporals.format(sub.submittedAt, 'MMM dd, yyyy HH:mm')}">Date</small>
-                                            </td>
-                                            <td>
-                                                <div class="d-flex gap-1 flex-wrap">
-                                                    <a th:href="@{/teacher/view-result/{id}(id=${sub.id})}" class="btn btn-xs btn-primary" title="View">
-                                                        <i class="bi bi-eye"></i>
-                                                    </a>
-                                                    <a th:unless="${sub.isGraded()}"
-                                                       th:href="@{/teacher/grade/{id}(id=${sub.id})}"
-                                                       class="btn btn-xs btn-warning" title="Grade">
-                                                        <i class="bi bi-pencil"></i>
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -661,18 +556,6 @@
             });
         }
 
-        // Students & Grades search
-        const searchInput = document.getElementById('classroomStudentSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', function () {
-                const q = this.value.toLowerCase().trim();
-                document.querySelectorAll('#classroomStudentPanelList .student-panel').forEach(panel => {
-                    const key = panel.dataset.searchKey || '';
-                    panel.style.display = (!q || key.includes(q)) ? '' : 'none';
-                });
-            });
-        }
-
         const enrollSearchInput = document.getElementById('enrollStudentSearch');
         const enrollSelect = document.getElementById('enrollStudentSelect');
         if (enrollSearchInput && enrollSelect) {
@@ -694,19 +577,6 @@
             });
         }
 
-        // Chevron rotate on collapse
-        document.querySelectorAll('.student-panel-header').forEach(header => {
-            const target = document.querySelector(header.dataset.bsTarget);
-            if (!target) return;
-            target.addEventListener('show.bs.collapse', () => {
-                const icon = header.querySelector('.bi-chevron-down');
-                if (icon) icon.classList.replace('bi-chevron-down', 'bi-chevron-up');
-            });
-            target.addEventListener('hide.bs.collapse', () => {
-                const icon = header.querySelector('.bi-chevron-up');
-                if (icon) icon.classList.replace('bi-chevron-up', 'bi-chevron-down');
-            });
-        });
     });
 </script>
 </body>

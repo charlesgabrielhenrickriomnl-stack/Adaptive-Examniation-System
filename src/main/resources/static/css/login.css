@@ -35,6 +35,30 @@ body::before {
     z-index: -1;
 }
 
+/* Login-only background inspired by the provided dark red/black reference strip. */
+body.login-page {
+    background:
+        linear-gradient(90deg, rgba(255, 111, 124, 0.34) 0%, rgba(255, 111, 124, 0.18) 15%, rgba(255, 111, 124, 0) 36%),
+        linear-gradient(180deg, #b71d2f 0%, #7d0f20 24%, #25070f 54%, #000000 100%),
+        linear-gradient(96deg, rgba(170, 22, 37, 0.78) 0%, rgba(97, 14, 24, 0.50) 38%, rgba(16, 7, 10, 0.96) 66%, rgba(0, 0, 0, 1) 100%);
+}
+
+body.login-page::before {
+    background-image:
+        radial-gradient(circle at 10% 24%, rgba(255, 120, 132, 0.34) 0%, rgba(255, 120, 132, 0.12) 20%, rgba(255, 120, 132, 0) 42%),
+        linear-gradient(90deg, rgba(158, 16, 31, 0.84) 0%, rgba(106, 12, 22, 0.56) 34%, rgba(30, 8, 12, 0.44) 58%, rgba(0, 0, 0, 0.92) 80%, rgba(0, 0, 0, 1) 100%),
+        linear-gradient(180deg, rgba(255, 74, 88, 0.14) 0%, rgba(255, 74, 88, 0.02) 9%, rgba(0, 0, 0, 0) 22%);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: none;
+    transform: none;
+}
+
+body.login-page::after {
+    content: none;
+}
+
 /* Main glassmorphism-style card container */
 .login-container {
     display: flex;
@@ -43,10 +67,11 @@ body::before {
     max-width: 650px;
     position: relative;
     overflow: hidden;
-    background-color: #ffffff;
+    background-color: #fffaf4;
+    border: 1px solid rgba(255, 236, 215, 0.85);
     border-radius: 12px;
     padding: 30px 28px 22px 28px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.30);
     backdrop-filter: blur(6px);
     gap: 18px;
     color: #222222;
@@ -146,7 +171,7 @@ body::before {
 .login-page-president {
     position: absolute;
     right: -116px;
-    bottom: -178px;
+    bottom: -210px;
     width: 520px;
     max-width: calc(100% + 240px);
     display: flex;
