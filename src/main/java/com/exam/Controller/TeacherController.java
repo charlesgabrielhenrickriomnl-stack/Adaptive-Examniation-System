@@ -807,32 +807,47 @@ public class TeacherController {
             return "redirect:/teacher/subject-classroom/" + subjectId;
         }
 
-        // Exam distribution: Only mark exam as available for students, do not create ExamSubmission here.
-        // TODO: Implement a proper distribution record if needed (e.g., a DistributedExam entity/table).
+        // Exam distribution: only mark exam as available for students.
+        int attempted = 0;
         int distributed = 0;
+        int failed = 0;
         for (String studentEmail : selectedStudents) {
             if (studentEmail == null || studentEmail.isBlank()) {
                 continue;
             }
-            DistributedExam distExam = new DistributedExam();
-            distExam.setStudentEmail(studentEmail.trim());
-            distExam.setExamId(paper.getExamId());
-            distExam.setSubject(subject.getSubjectName());
-            distExam.setExamName(paper.getExamName());
-            distExam.setActivityType(paper.getActivityType());
-            distExam.setTimeLimit((timeLimit != null && timeLimit > 0) ? timeLimit : 60);
-            distExam.setDeadline(deadline == null ? "" : deadline);
-            distExam.setDistributedAt(java.time.LocalDateTime.now());
-            distExam.setSubmitted(false);
-            distExam.setQuestionIndexesJson(gson.toJson(selectedIndexes));
-            distributedExamRepository.save(distExam);
-            distributed++;
+            attempted++;
+            try {
+                DistributedExam distExam = new DistributedExam();
+                distExam.setStudentEmail(studentEmail.trim());
+                distExam.setExamId(paper.getExamId());
+                distExam.setSubject(subject.getSubjectName());
+                distExam.setExamName(paper.getExamName());
+                distExam.setActivityType(paper.getActivityType());
+                distExam.setTimeLimit((timeLimit != null && timeLimit > 0) ? timeLimit : 60);
+                distExam.setDeadline(deadline == null ? "" : deadline);
+                distExam.setDistributedAt(java.time.LocalDateTime.now());
+                distExam.setSubmitted(false);
+                distExam.setQuestionIndexesJson(gson.toJson(selectedIndexes));
+                distributedExamRepository.save(distExam);
+                distributed++;
+            } catch (Exception ignored) {
+                failed++;
+            }
+        }
+
+        if (distributed > 0) {
+            redirectAttributes.addFlashAttribute("successMessage",
+                "Quiz successfully distributed to " + distributed + " student(s).");
         }
 
         if (distributed == 0) {
-            redirectAttributes.addFlashAttribute("errorMessage", "No valid students selected for distribution.");
-        } else {
-            redirectAttributes.addFlashAttribute("successMessage", "Quiz distributed to " + distributed + " student(s).");
+            redirectAttributes.addFlashAttribute("errorMessage",
+                attempted == 0
+                    ? "Quiz distribution failed. No valid students were selected."
+                    : "Quiz distribution failed. Could not distribute to selected students.");
+        } else if (failed > 0) {
+            redirectAttributes.addFlashAttribute("warningMessage",
+                "Distributed to " + distributed + " student(s), but failed for " + failed + " student(s).");
         }
         return "redirect:/teacher/subject-classroom/" + subjectId;
     }

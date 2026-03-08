@@ -9,92 +9,356 @@
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <style>
         .student-dashboard-shell {
-            max-width: 1860px;
+            max-width: 1460px;
             margin: 0 auto;
         }
         @media (min-width: 1200px) {
             .student-dashboard-shell {
-                padding-left: 2.5in !important;
-                padding-right: 1.1rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
             }
         }
-        .dashboard-left-panel {
-            position: sticky;
-            top: 102px;
+
+        .subjects-center-stage {
+            max-width: 1320px;
+            margin: 0 auto;
         }
         .dashboard-right-panel {
             min-height: 420px;
         }
-        .profile-hero {
-            background: linear-gradient(135deg, var(--eac-maroon) 0%, #8f1a2e 100%);
-            color: #fff;
-            border-radius: 14px;
-            padding: 1.4rem 1.5rem;
-            margin-bottom: 1rem;
+
+        .subjects-hero {
+            background:
+                radial-gradient(circle at 92% 14%, rgba(231, 180, 56, 0.24) 0%, rgba(231, 180, 56, 0) 42%),
+                linear-gradient(135deg, #ffffff 0%, #fff9f2 100%);
+            border: 1px solid #eddcc6;
+            border-radius: 18px;
+            padding: 1.15rem 1.3rem;
+            box-shadow: 0 10px 30px rgba(86, 31, 12, 0.08);
+            margin-bottom: 1.15rem;
         }
-        .profile-avatar {
-            width: 64px; height: 64px; border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.9rem; flex-shrink: 0;
+
+        .subjects-hero-main {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
         }
-        .stat-card {
-            border: 1px solid var(--eac-border);
-            border-radius: 12px;
-            padding: 1rem 1rem;
-            text-align: center;
-            transition: box-shadow 0.2s;
-            min-height: 112px;
+
+        .subjects-kicker {
+            margin: 0 0 0.25rem;
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9b6d14;
         }
-        .stat-card:hover { box-shadow: 0 4px 14px rgba(122,16,34,0.1); }
-        .stat-value { font-size: 1.85rem; font-weight: 700; color: var(--eac-maroon); }
-        .stat-label { font-size: 0.82rem; color: #666; margin-top: 0.15rem; }
-        .hist-thead { background: var(--eac-maroon); color: #fff; }
-        .badge-score { font-size: 0.83rem; }
-        .subject-chip {
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            background: #f5f0f2; border: 1px solid #e0d0d5;
-            border-radius: 30px; padding: 0.3rem 0.85rem;
-            font-size: 0.85rem; color: #3a0a10;
-        }
+
         .subject-card {
-            border: 1px solid var(--eac-border);
-            border-radius: 14px;
+            border: 1px solid #e9d8c8;
+            border-radius: 16px;
             overflow: hidden;
-            transition: box-shadow 0.2s;
+            transition: transform 0.22s ease, box-shadow 0.22s ease;
+            background: #fff;
         }
-        .subject-card:hover { box-shadow: 0 8px 24px rgba(122,16,34,0.13); }
+
+        .subject-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 14px 30px rgba(93, 24, 9, 0.14);
+        }
+
         .subject-header {
-            background: linear-gradient(135deg, var(--eac-maroon) 0%, #8f1a2e 100%) !important;
+            background: linear-gradient(140deg, #8f1228 0%, #6f0e20 58%, #570916 100%) !important;
+            border-bottom: none;
+            padding: 1.15rem 1.15rem 1rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 146px;
         }
-        .activity-item { transition: background 0.15s; }
-        .activity-item:hover { background: #fdf6f0; }
-        .activity-pending { border-left: 3px solid var(--eac-gold) !important; }
-        .activity-missed { border-left: 3px solid var(--bs-danger) !important; }
-        .activity-item .date-text { color: #555; font-size: 0.78rem; }
-        .min-w-0 { min-width: 0; }
-        .section-title {
-            color: var(--eac-maroon); font-weight: 700;
-            border-bottom: 2px solid var(--eac-gold);
-            padding-bottom: 0.4rem; margin-bottom: 1.25rem;
+
+        .subject-title {
+            line-height: 1.18;
+            min-height: 2.36em;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            line-clamp: 2;
+            overflow: hidden;
         }
-        .activity-list {
-            max-height: 360px;
-            overflow-y: auto;
+
+        .subject-description {
+            margin: 0.45rem 0 0;
+            font-size: 0.84rem;
+            color: rgba(255, 255, 255, 0.78);
+            line-height: 1.35;
+            min-height: 2.3em;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            line-clamp: 2;
+            overflow: hidden;
         }
+
+        .subject-teacher {
+            margin-top: auto;
+            font-size: 0.76rem;
+            color: rgba(255, 255, 255, 0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .subject-card .card-body {
+            padding: 1rem 1.1rem;
+        }
+
+        .pending-empty {
+            text-align: center;
+            padding: 1.25rem 0.5rem 0.95rem;
+            color: #6b6b6b;
+        }
+
+        .pending-empty i {
+            font-size: 1.8rem;
+            color: #506c4a;
+        }
+
+        .pending-empty p {
+            margin: 0.5rem 0 0;
+            font-size: 0.93rem;
+            font-weight: 600;
+            color: #3e4f3b;
+        }
+
+        .pending-empty small {
+            color: #6e7768;
+        }
+
+        .pending-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .pending-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            border: 1px solid #f1dfbe;
+            border-radius: 12px;
+            padding: 0.58rem 0.72rem;
+            background: #fffaf1;
+        }
+
+        .pending-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-width: 0;
+            font-weight: 600;
+            color: #6f4e0f;
+            font-size: 0.86rem;
+        }
+
+        .pending-count {
+            background: #d09312;
+            color: #fff;
+            border-radius: 999px;
+            min-width: 1.7rem;
+            height: 1.7rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0 0.45rem;
+        }
+
+        .completed-pill {
+            margin-top: 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.79rem;
+            color: #225f3a;
+            background: #ecf8f1;
+            border: 1px solid #ccebd9;
+            border-radius: 999px;
+            padding: 0.3rem 0.6rem;
+        }
+
+        .subject-footer {
+            background: #fff;
+            border-top: 1px solid #efe2d5;
+            padding: 0.75rem 1.1rem 1rem;
+        }
+
+        .subject-action-btn {
+            width: 100%;
+            border-radius: 10px;
+            border-color: #d9c6af;
+            color: #7a1022;
+            font-weight: 600;
+        }
+
+        .subject-action-btn:hover {
+            background: #7a1022;
+            color: #fff;
+            border-color: #7a1022;
+        }
+
+        .subjects-toolbar {
+            background: #ffffff;
+            border: 1px solid #eadfce;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            box-shadow: 0 6px 20px rgba(53, 24, 11, 0.06);
+        }
+
+        .subjects-toolbar-label {
+            display: block;
+            margin-bottom: 0.45rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #5e3a16;
+        }
+
         .subject-search {
-            max-width: 560px;
+            max-width: 620px;
+            border-radius: 10px;
+            border-color: #e2d3c3;
         }
+
+        .subject-search:focus {
+            border-color: #c9993d;
+            box-shadow: 0 0 0 0.2rem rgba(201, 153, 61, 0.15);
+        }
+
+        .section-title {
+            color: var(--eac-maroon);
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+            border: 0;
+            padding-bottom: 0;
+        }
+
+        .subjects-subtext {
+            margin: 0;
+            color: #65584f;
+        }
+
+        .subjects-hero-stat {
+            background: #fff;
+            border: 1px solid #f0ddc4;
+            border-radius: 14px;
+            padding: 0.55rem 0.8rem;
+            min-width: 124px;
+            text-align: center;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+            flex-shrink: 0;
+        }
+
+        .subjects-hero-stat .number {
+            font-size: 1.35rem;
+            line-height: 1;
+            font-weight: 800;
+            color: #7a1022;
+        }
+
+        .subjects-hero-stat .label {
+            font-size: 0.73rem;
+            color: #826548;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+        }
+
+        .no-subjects-card {
+            border: 1px dashed #d8c8b7;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #fff 0%, #fffaf5 100%);
+            padding: 2.8rem 1.2rem;
+            text-align: center;
+        }
+
+        .no-subjects-card i {
+            font-size: 3.2rem;
+            color: #bea582;
+        }
+
+        #subjectsGrid .subject-card-col:nth-child(1) .subject-card { animation-delay: 0.03s; }
+        #subjectsGrid .subject-card-col:nth-child(2) .subject-card { animation-delay: 0.08s; }
+        #subjectsGrid .subject-card-col:nth-child(3) .subject-card { animation-delay: 0.12s; }
+        #subjectsGrid .subject-card-col:nth-child(4) .subject-card { animation-delay: 0.16s; }
+
+        #subjectsGrid .subject-card {
+            animation: cardRise 0.38s ease both;
+        }
+
+        @keyframes cardRise {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .subject-card-col {
             display: flex;
         }
+
         .subject-card-col .subject-card {
             width: 100%;
         }
+
+        .subjects-load-more-wrap {
+            display: flex;
+            justify-content: center;
+            margin-top: 0.85rem;
+        }
+
+        .subjects-load-more-btn {
+            border-radius: 999px;
+            font-weight: 700;
+            padding-inline: 1.1rem;
+        }
+
         @media (max-width: 1199px) {
-            .dashboard-left-panel {
-                position: static;
-                top: auto;
+            .student-dashboard-shell {
+                max-width: 100%;
+            }
+            .subjects-hero-main {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .subjects-hero-stat {
+                min-width: 0;
+                width: auto;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .subjects-hero {
+                padding: 0.95rem 0.95rem;
+            }
+            .section-title {
+                font-size: 1.35rem;
+            }
+            .subjects-toolbar {
+                padding: 0.75rem 0.8rem;
+            }
+            .subject-header {
+                padding: 1rem 0.95rem 0.9rem;
+            }
+            .subject-card .card-body {
+                padding: 0.9rem 0.95rem;
             }
         }
     </style>
@@ -107,73 +371,97 @@
     <div class="teacher-content-wrapper">
         <div class="container-fluid student-dashboard-shell px-2 px-lg-3">
             <div class="dashboard-right-panel">
-                        <div class="mb-4">
-                            <h3 class="section-title"><i class="bi bi-grid-3x3-gap-fill me-2"></i>My Subjects</h3>
-                            <p class="text-muted mb-0">
-                                <strong th:text="${studentEmail}">student</strong> —
-                                view your enrolled subjects and available exams.
-                            </p>
+                    <div class="subjects-center-stage">
+                        <div class="subjects-hero">
+                            <div class="subjects-hero-main">
+                                <div>
+                                    <p class="subjects-kicker">Student Workspace</p>
+                                    <h3 class="section-title"><i class="bi bi-grid-3x3-gap-fill me-2"></i>My Subjects</h3>
+                                    <p class="subjects-subtext">
+                                        <strong th:text="${studentEmail}">student</strong> — view your enrolled subjects and available exams.
+                                    </p>
+                                </div>
+                                <div class="subjects-hero-stat">
+                                    <div class="number" th:text="${hasSubjects ? #lists.size(subjectCards) : 0}">0</div>
+                                    <div class="label">Enrolled</div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div th:if="${hasSubjects}" class="mb-3">
+                        <div th:if="${hasSubjects}" class="subjects-toolbar mb-3">
+                            <label for="subjectSearch" class="subjects-toolbar-label">Find a classroom</label>
                             <input id="subjectSearch" type="text" class="form-control subject-search"
-                                   placeholder="🔎 Search subject name, description, or teacher...">
+                                   placeholder="Search subject, description, or teacher name...">
                         </div>
 
                         <!-- No Subjects -->
                         <div th:if="${!hasSubjects}" class="text-center py-5">
-                            <div class="card upload-card p-5">
-                                <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
-                                <h5 class="mt-3 text-muted">No Subjects Yet</h5>
-                                <p class="text-muted mb-0">You haven't been enrolled in any subjects yet.<br>Contact your teacher to get started.</p>
+                            <div class="no-subjects-card">
+                                <i class="bi bi-journal-x"></i>
+                                <h5 class="mt-3 mb-2" style="color:#7a1022;">No Subjects Yet</h5>
+                                <p class="text-muted mb-0">You have not been enrolled in any subjects yet.<br>Contact your teacher to get started.</p>
                             </div>
                         </div>
 
                         <!-- Subject Cards Grid -->
-                        <div th:if="${hasSubjects}" class="row g-3" id="subjectsGrid">
+                                                <div th:if="${hasSubjects}" class="row g-3" id="subjectsGrid">
                                <div th:each="subject : ${subjectCards}" class="col-12 col-md-6 col-xl-4 col-xxl-3 subject-card-col"
                                  th:attr="data-search-key=${#strings.toLowerCase(subject.name) + ' ' + #strings.toLowerCase(subject.description != null ? subject.description : '') + ' ' + #strings.toLowerCase(subject.teacherName != null ? subject.teacherName : '')}">
                                 <div class="card subject-card shadow-sm h-100">
                                     <!-- Subject Header -->
                                     <div class="card-header subject-header text-white p-4">
-                                        <h5 class="card-title mb-1 fw-bold" th:text="${subject.name}">Subject Name</h5>
-                                        <small th:if="${subject.description != null && !subject.description.isEmpty()}"
-                                               th:text="${subject.description}" class="opacity-75">Description</small>
-                                        <small th:unless="${subject.description != null && !subject.description.isEmpty()}" class="opacity-75">
-                                            <i class="bi bi-person me-1"></i><span th:text="'TEACHER: ' + ${subject.teacherName}">TEACHER: Name</span>
-                                        </small>
+                                                                                <h5 class="card-title subject-title mb-0 fw-bold" th:text="${subject.name}">Subject Name</h5>
+                                        <p class="subject-description"
+                                           th:text="${subject.description != null && !subject.description.isEmpty() ? subject.description : 'No subject description provided.'}">
+                                            Description
+                                        </p>
+                                        <div class="subject-teacher" th:if="${subject.teacherName != null && !subject.teacherName.isEmpty()}">
+                                            <i class="bi bi-person-fill"></i>
+                                            <span th:text="'Teacher: ' + ${subject.teacherName}">Teacher: Name</span>
+                                        </div>
                                     </div>
                                     <!-- Activities Section -->
                                     <div class="card-body p-3">
-                                        <div th:if="${subject.pendingCount == 0}" class="text-center text-muted py-3">
-                                            <i class="bi bi-check2-circle" style="font-size: 1.8rem;"></i>
-                                            <p class="mb-0 mt-2 small">No pending activities</p>
+                                        <div th:if="${subject.pendingCount == 0}" class="pending-empty">
+                                            <i class="bi bi-check2-circle"></i>
+                                            <p>All caught up</p>
+                                            <small>No pending activities</small>
                                         </div>
 
-                                        <div th:if="${subject.pendingSummaries != null && !subject.pendingSummaries.isEmpty()}" class="d-flex flex-column gap-2">
+                                        <div th:if="${subject.pendingSummaries != null && !subject.pendingSummaries.isEmpty()}" class="pending-list">
                                             <div th:each="pending : ${subject.pendingSummaries}"
-                                                 class="d-flex justify-content-between align-items-center border rounded px-3 py-2 bg-light">
-                                                <span class="fw-semibold" th:text="${pending.label}">Pending Quiz</span>
-                                                <span class="badge bg-warning text-dark" th:text="${pending.count}">0</span>
+                                                 class="pending-item">
+                                                <span class="pending-label">
+                                                    <i class="bi bi-clock-history"></i>
+                                                    <span th:text="${pending.label}">Pending Quiz</span>
+                                                </span>
+                                                <span class="pending-count" th:text="${pending.count}">0</span>
                                             </div>
                                         </div>
 
                                         <div th:if="${subject.completedCount != null && subject.completedCount > 0}" class="mt-3">
-                                            <small class="text-muted">
-                                                <i class="bi bi-check2-square me-1"></i>
-                                                Completed activities: <span th:text="${subject.completedCount}">0</span>
-                                            </small>
+                                            <span class="completed-pill">
+                                                <i class="bi bi-check2-square"></i>
+                                                Completed: <span th:text="${subject.completedCount}">0</span>
+                                            </span>
                                         </div>
                                     </div>
 
-                                    <div class="card-footer bg-light text-center">
-                                        <a th:href="@{/student/classroom/{id}(id=${subject.id})}" class="btn btn-sm btn-outline-secondary">
+                                    <div class="card-footer text-center subject-footer">
+                                        <a th:href="@{/student/classroom/{id}(id=${subject.id})}" class="btn btn-sm subject-action-btn">
                                             <i class="bi bi-door-open me-1"></i>View Classroom
                                         </a>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <div th:if="${hasSubjects && #lists.size(subjectCards) > 8}" id="subjectsLoadMoreWrap" class="subjects-load-more-wrap">
+                            <button type="button" id="subjectsLoadMoreBtn" class="btn btn-outline-secondary subjects-load-more-btn">
+                                <i class="bi bi-plus-circle me-1"></i>Load more subjects
+                            </button>
+                        </div>
+                    </div>
             </div>
             </div>
         </div>
@@ -184,15 +472,58 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const searchInput = document.getElementById('subjectSearch');
-        if (!searchInput) return;
+        const subjectCards = Array.from(document.querySelectorAll('.subject-card-col'));
+        const loadMoreWrap = document.getElementById('subjectsLoadMoreWrap');
+        const loadMoreBtn = document.getElementById('subjectsLoadMoreBtn');
 
-        searchInput.addEventListener('input', function () {
-            const query = (this.value || '').toLowerCase().trim();
-            document.querySelectorAll('.subject-card-col').forEach(card => {
+        if (!subjectCards.length) return;
+
+        let visibleLimit = 8;
+
+        function applySubjectVisibility() {
+            const query = searchInput ? (searchInput.value || '').toLowerCase().trim() : '';
+            let matchedCount = 0;
+
+            subjectCards.forEach(card => {
                 const key = card.getAttribute('data-search-key') || '';
-                card.style.display = (!query || key.includes(query)) ? '' : 'none';
+                const matches = !query || key.includes(query);
+
+                if (!matches) {
+                    card.style.display = 'none';
+                    return;
+                }
+
+                const shouldShow = query ? true : matchedCount < visibleLimit;
+                card.style.display = shouldShow ? '' : 'none';
+                matchedCount += 1;
             });
-        });
+
+            if (!loadMoreWrap) return;
+
+            if (query) {
+                loadMoreWrap.style.display = 'none';
+                return;
+            }
+
+            const hasMore = matchedCount > visibleLimit;
+            loadMoreWrap.style.display = hasMore ? 'flex' : 'none';
+            if (loadMoreBtn) {
+                loadMoreBtn.disabled = !hasMore;
+            }
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', applySubjectVisibility);
+        }
+
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', function () {
+                visibleLimit += 8;
+                applySubjectVisibility();
+            });
+        }
+
+        applySubjectVisibility();
     });
 </script>
 </body>

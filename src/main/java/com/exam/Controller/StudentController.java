@@ -172,6 +172,7 @@ public class StudentController {
         model.addAttribute("subjectName", subjectName);
         model.addAttribute("subjectDescription", subjectDescription == null ? "" : subjectDescription);
         model.addAttribute("teacherName", teacherName);
+        model.addAttribute("subjectId", subjectId);
         model.addAttribute("pendingExams", pendingExams);
         model.addAttribute("hasHistory", !submissionsBySubject.isEmpty());
         model.addAttribute("subjectSubmissions", submissionsBySubject);
@@ -218,7 +219,20 @@ public class StudentController {
                 .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
                     Comparator.nullsLast(Comparator.naturalOrder())));
             return existingSubmission
-                .map(sub -> "redirect:/student/results/" + sub.getId())
+                .map(sub -> {
+                    Long classroomId = enrolledStudentRepository.findByStudentEmail(studentEmail).stream()
+                        .filter(item -> item.getSubjectId() != null)
+                        .filter(item -> sameText(item.getSubjectName(), distributedExam.getSubject()))
+                        .map(EnrolledStudent::getSubjectId)
+                        .findFirst()
+                        .orElse(null);
+
+                    String target = "/student/results/" + sub.getId();
+                    if (classroomId != null) {
+                        target += "?classroomId=" + classroomId;
+                    }
+                    return "redirect:" + target;
+                })
                 .orElse("redirect:/student/dashboard");
         }
 
@@ -657,7 +671,10 @@ public class StudentController {
     }
 
     @GetMapping("/results/{id}")
-    public String results(@PathVariable("id") Long id, Model model, Principal principal) {
+    public String results(@PathVariable("id") Long id,
+                          @RequestParam(value = "classroomId", required = false) Long classroomId,
+                          Model model,
+                          Principal principal) {
         String studentEmail = getStudentEmail(principal);
         Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(id);
         if (submissionOpt.isEmpty() || !sameText(submissionOpt.get().getStudentEmail(), studentEmail)) {
@@ -665,6 +682,27 @@ public class StudentController {
         }
 
         ExamSubmission submission = submissionOpt.get();
+        List<EnrolledStudent> enrollments = enrolledStudentRepository.findByStudentEmail(studentEmail);
+
+        String backClassroomUrl = null;
+        if (classroomId != null) {
+            boolean hasAccessToClassroom = enrollments.stream()
+                .map(EnrolledStudent::getSubjectId)
+                .anyMatch(classroomId::equals);
+            if (hasAccessToClassroom) {
+                backClassroomUrl = "/student/classroom/" + classroomId;
+            }
+        }
+
+        if (backClassroomUrl == null) {
+            backClassroomUrl = enrollments.stream()
+                .filter(enrollment -> enrollment.getSubjectId() != null)
+                .filter(enrollment -> sameText(enrollment.getSubjectName(), submission.getSubject()))
+                .findFirst()
+                .map(enrollment -> "/student/classroom/" + enrollment.getSubjectId())
+                .orElse("/student/dashboard");
+        }
+
         boolean resultsLocked = !submission.isResultsReleased();
         if (resultsLocked) {
             model.addAttribute("infoMessage", "Your teacher has not released the final results yet.");
@@ -689,6 +727,7 @@ public class StudentController {
         model.addAttribute("total", submission.getTotalQuestions());
         model.addAttribute("percentage", submission.getPercentage());
         model.addAttribute("analytics", analytics);
+        model.addAttribute("backClassroomUrl", backClassroomUrl);
         return "student-results";
     }
 

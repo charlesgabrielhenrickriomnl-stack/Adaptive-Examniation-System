@@ -21,11 +21,33 @@
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body class="bg-light">
-    <div class="container-fluid py-4 px-4 px-lg-5">
-        <div class="results-card card shadow-sm border-0 p-4 p-lg-5">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                <h2 class="fw-bold mb-0">Exam Submitted</h2>
-                <a href="/student/dashboard" class="btn btn-outline-primary">Back to Dashboard</a>
+    <div class="container-fluid px-3 px-lg-4 results-stage">
+        <div class="results-card card shadow-sm border-0 p-3 p-lg-4">
+            <div class="results-hero mb-3">
+                <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+                    <div>
+                        <p class="results-kicker">Submission Review</p>
+                        <h2 class="fw-bold mb-1">Exam Submitted</h2>
+                        <p class="results-subtitle mb-0">Your score and performance insights are shown below.</p>
+                    </div>
+                    <a th:href="${backClassroomUrl}" class="btn results-back-btn">
+                        <i class="bi bi-arrow-left me-1"></i>Back
+                    </a>
+                </div>
+                <div class="results-meta-row" th:if="${submission != null}">
+                    <span class="results-meta-chip">
+                        <i class="bi bi-file-earmark-text"></i>
+                        <span th:text="${submission.examName}">Exam Name</span>
+                    </span>
+                    <span class="results-meta-chip">
+                        <i class="bi bi-book"></i>
+                        <span th:text="${submission.subject}">Subject Name</span>
+                    </span>
+                    <span class="results-meta-chip" th:if="${submission.submittedAt != null}">
+                        <i class="bi bi-calendar-check"></i>
+                        <span th:text="${#temporals.format(submission.submittedAt, 'MMM dd, yyyy HH:mm')}">Submitted</span>
+                    </span>
+                </div>
             </div>
 
             <div th:if="${infoMessage != null}" class="alert alert-info mb-4" role="alert" th:text="${infoMessage}">
@@ -61,7 +83,7 @@
                 <div class="col-lg-5">
                     <div class="score-panel h-100 p-4 text-center">
                         <h4 class="text-secondary" th:text="${submission != null && submission.isGraded() ? 'Your Final Score' : 'Current Score (Pending Grading)'}">Your Final Score</h4>
-                        <h1 class="display-2 fw-bold text-primary" th:text="${submission != null && submission.isGraded() ? (submission.finalScore + ' / ' + total) : (score + ' / ' + total)}"></h1>
+                        <h1 class="display-2 fw-bold text-primary score-display" th:text="${submission != null && submission.isGraded() ? (submission.finalScore + ' / ' + total) : (score + ' / ' + total)}"></h1>
                         <p class="text-muted mt-2 mb-0">
                             <span th:text="${submission != null && submission.isGraded() ? #numbers.formatDecimal(submission.finalPercentage, 1, 2) + '%' : (percentage != null ? #numbers.formatDecimal(percentage, 1, 2) + '%' : '0%')}"></span>
                         </p>
@@ -78,29 +100,25 @@
                             <p class="mb-0" th:text="${submission.teacherComments}"></p>
                         </div>
 
-                        <div th:if="${irtTheta != null && irtScaledScore != null}" class="alert alert-secondary mt-4 text-start mb-0">
-                            <h6 class="mb-2"><i class="bi bi-graph-up-arrow"></i> IRT 3PL Analysis</h6>
-                            <div class="small mb-1">
-                                Ability (theta): <strong th:text="${#numbers.formatDecimal(irtTheta, 1, 3)}">0.000</strong>
-                            </div>
-                            <div class="small mb-1">
-                                Scaled score (500 +- 100): <strong th:text="${irtScaledScore}">500</strong>
-                            </div>
-                            <div class="small" th:if="${irtStandardError != null}">
-                                Standard error: <strong th:text="${#numbers.formatDecimal(irtStandardError, 1, 3)}">0.000</strong>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
                 <div class="col-lg-7" th:if="${analytics}">
                     <div class="analytics-panel h-100 p-4">
                         <h3>Performance Analysis</h3>
-                        <span class="badge performance-badge"
-                              th:classappend="${analytics.performanceCategory == 'Excellent' ? 'bg-success' : 
-                                              analytics.performanceCategory == 'Good' ? 'bg-info' : 
-                                              analytics.performanceCategory == 'Fair' ? 'bg-warning' : 'bg-danger'}"
-                              th:text="${analytics.performanceCategory}"></span>
+                        <div class="analytics-toolbar">
+                            <span class="badge performance-badge"
+                                  th:classappend="${analytics.performanceCategory == 'Excellent' ? 'bg-success' : 
+                                                  analytics.performanceCategory == 'Good' ? 'bg-info' : 
+                                                  analytics.performanceCategory == 'Fair' ? 'bg-warning' : 'bg-danger'}"
+                                  th:text="${analytics.performanceCategory}"></span>
+                            <button id="renderRadarBtn" class="btn analytics-chart-btn" type="button">
+                                📊 View Detailed Performance Chart
+                            </button>
+                            <button id="toggleChartBtn" class="btn btn-outline-secondary analytics-back-btn d-none" type="button">
+                                <i class="bi bi-arrow-left me-1"></i>Back
+                            </button>
+                        </div>
                         
                         <!-- Hidden inputs to pass analytics data to JavaScript -->
                         <input type="hidden" id="topicMastery" th:value="${analytics.topicMastery}"/>
@@ -111,18 +129,14 @@
                         <input type="hidden" id="performanceCategory" th:value="${analytics.performanceCategory}"/>
                         <input type="hidden" id="overallPercentage" th:value="${percentage}"/>
                         
-                        <button id="renderRadarBtn" class="btn btn-success mt-3">
-                            📊 View Detailed Performance Chart
-                        </button>
-                        
                         <div id="chartSection" class="hidden mt-4">
                             <div id="performanceSummary"></div>
                             <canvas id="radarChartCanvas" width="400" height="400"></canvas>
                         </div>
                         
                         <!-- Performance Summary Box -->
-                        <div class="alert alert-light mt-4 text-start">
-                            <h5 class="alert-heading">Performance Summary (Random Forest Analysis)</h5>
+                        <div class="alert alert-light mt-4 text-start performance-summary-box">
+                            <h5 class="alert-heading">Performance Summary</h5>
                             <p><strong>Overall Score:</strong> <span th:text="${percentage != null ? #numbers.formatDecimal(percentage, 1, 2) + '%' : '0%'}"></span> - <span th:text="${analytics.performanceCategory}"></span></p>
                             <hr>
                             <p class="mb-2"><strong>Strengths:</strong> 

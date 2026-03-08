@@ -67,8 +67,8 @@ body.login-page::after {
     max-width: 650px;
     position: relative;
     overflow: hidden;
-    background-color: #fffaf4;
-    border: 1px solid rgba(255, 236, 215, 0.85);
+    background-color: #ffffff;
+    border: 1px solid rgba(225, 225, 225, 0.9);
     border-radius: 12px;
     padding: 30px 28px 22px 28px;
     box-shadow: 0 16px 38px rgba(0, 0, 0, 0.30);
@@ -163,15 +163,35 @@ body.login-page::after {
 
 .code-learn-improve {
     font-size: 0.95rem;
-    color: #555555;
+    color: #2f2f2f;
     margin-top: 12px;
     text-align: right;
+}
+
+.login-brief-description {
+    max-width: 320px;
+    margin: 0 0 6px auto;
+    text-align: right;
+    line-height: 1.45;
+}
+
+.login-brief-description p {
+    margin-bottom: 4px;
+    color: #2f2f2f;
+    text-align: justify;
+    text-justify: inter-word;
+}
+
+.login-brief-description .code-learn-improve {
+    margin-top: 12px;
+    color: #2f2f2f;
+    font-size: 0.95rem;
 }
 
 .login-page-president {
     position: absolute;
     right: -116px;
-    bottom: -210px;
+    bottom: -122px;
     width: 520px;
     max-width: calc(100% + 240px);
     display: flex;
@@ -190,6 +210,7 @@ body.login-page::after {
     object-fit: contain;
     object-position: right bottom;
     display: block;
+    clip-path: inset(0 0 4px 0);
 }
 
 /* Form layout & controls – adapted from the reference design */
@@ -228,6 +249,110 @@ body.login-page::after {
 
 .form-check-input {
     cursor: pointer;
+}
+
+.register-page {
+    padding: 10px;
+}
+
+.register-page .login-container {
+    width: min(90vw, 920px);
+    max-width: 920px;
+    padding: 24px 32px 18px 32px;
+    gap: 12px;
+}
+
+.register-page .login-panel {
+    width: 60%;
+    padding: 10px 24px 4px 2px;
+}
+
+.register-page .right-panel {
+    width: 40%;
+    padding: 14px 0 0 14px;
+}
+
+.register-page .system-text {
+    margin-bottom: 16px;
+}
+
+.register-page .description {
+    margin-bottom: 0;
+    line-height: 1.45;
+}
+
+.register-page .login-page-president {
+    width: clamp(380px, 42vw, 540px);
+    max-width: 58%;
+    right: -26px;
+    bottom: -88px;
+}
+
+.register-page .login-page-president img {
+    clip-path: inset(0 0 3px 0);
+}
+
+.register-page .register-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+}
+
+.register-page .register-form .mb-3 {
+    margin-bottom: 0.75rem !important;
+}
+
+.register-page .register-role-group {
+    margin-top: 0.2rem;
+}
+
+.register-page .footer-links {
+    margin-top: 10px;
+}
+
+.register-page .login-contact-bar {
+    margin-top: 8px !important;
+}
+
+.register-page .footer-panel {
+    margin-top: 4px;
+    padding-top: 4px;
+}
+
+.login-inline-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -6px 0 14px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #efc4ca;
+    background: #fff2f4;
+    color: #8f1d2b;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.login-inline-alert i {
+    color: #b22222;
+}
+
+.login-success-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #b9e4ca;
+    background: #edf9f1;
+    color: #1f6b3b;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.login-success-inline i {
+    color: #228b4a;
 }
 
 /* Primary login button – uses EAC red instead of reference purple */
@@ -284,7 +409,16 @@ body.login-page::after {
     font-size: 0.75rem;
     letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: #555555; /* Darker text for white background */
+    color: #555555;
+    position: relative;
+    z-index: 2;
+    width: fit-content;
+    margin: 0 auto;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(228, 228, 228, 0.92);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
 }
 
 .login-contact-bar span {
@@ -296,12 +430,14 @@ body.login-page::after {
 }
 
 .login-contact-bar i {
+    color: inherit;
     margin-right: 6px;
 }
 
 .auth-corner-seal {
     position: fixed;
     right: 20px;
+    top: auto;
     bottom: 16px;
     width: 122px;
     height: auto;
@@ -314,6 +450,7 @@ body.login-page::after {
 .auth-corner-iso {
     position: fixed;
     right: 136px;
+    top: auto;
     bottom: 22px;
     width: 108px;
     height: auto;
@@ -323,70 +460,64 @@ body.login-page::after {
     user-select: none;
 }
 
-.login-popup-overlay {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.28);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    z-index: 1200;
-}
-
-.login-popup-alert {
-    position: relative;
-    margin: 0;
-    min-width: 320px;
-    max-width: min(90vw, 520px);
-    padding: 14px 44px 14px 16px;
-    border-radius: 12px;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.25);
-    text-align: left;
-}
-
-.login-popup-close {
-    position: absolute;
-    top: 6px;
-    right: 10px;
-    border: none;
-    background: transparent;
-    color: rgba(0, 0, 0, 0.55);
-    font-size: 1.4rem;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0;
-}
-
-.login-popup-close:hover {
-    color: rgba(0, 0, 0, 0.85);
-}
-
-/* Alerts spacing and centering inside the login panel */
-.login-panel .alert {
-    max-width: 340px;
-    margin: 0 auto 12px auto;
-    padding: 8px 12px;
-    text-align: center;
-    border-radius: 8px;
-}
-
 /* Responsive tweaks – card padding & stacking similar to reference */
 @media (max-width: 576px) {
+    body.login-page,
+    body.register-page {
+        align-items: flex-start;
+        padding: 12px 8px;
+    }
+
     .login-container {
-        padding: 22px 18px 16px 18px;
-        width: 100%;
+        width: min(100%, 430px);
+        max-width: 430px;
+        padding: 18px 14px 14px 14px;
+        border-radius: 14px;
+        gap: 10px;
     }
 
     .eac-title {
-        font-size: 1.3rem;
-        letter-spacing: 1px;
+        font-size: 1.02rem;
+        letter-spacing: 0.8px;
     }
 
     .aes-subtitle {
-        font-size: 0.8rem;
-        letter-spacing: 0.18em;
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+    }
+
+    .system-text {
+        font-size: 1.05rem;
+        margin-bottom: 8px;
+    }
+
+    .welcome-text {
+        font-size: 0.72rem;
+    }
+
+    .login-contact-bar {
+        font-size: 0.72rem;
+        letter-spacing: 0.03em;
+        color: #555555;
+        text-transform: none;
+    }
+}
+
+@media (max-width: 992px) {
+    .register-page .login-container {
+        width: 96%;
+        padding: 20px 18px 14px 18px;
+    }
+
+    .register-page .register-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .register-page .login-page-president {
+        width: clamp(285px, 44vw, 380px);
+        max-width: 48%;
+        right: -16px;
+        bottom: -74px;
     }
 }
 
@@ -420,39 +551,207 @@ body.login-page::after {
 
     .right-panel {
         text-align: left;
+        margin-top: 4px;
+    }
+
+    .login-brief-description {
+        max-width: none;
+        margin: 2px 0 4px 0;
+        text-align: left;
+    }
+
+    .login-brief-description .code-learn-improve {
+        text-align: left;
+        margin-top: 8px;
     }
 
     .auth-corner-seal {
-        width: 92px;
-        right: 12px;
-        bottom: 12px;
+        display: none;
     }
 
     .auth-corner-iso {
-        width: 82px;
-        right: 96px;
-        bottom: 16px;
+        display: none;
     }
 
     .login-page-president {
         position: static;
         justify-content: center;
-        margin-top: 10px;
+        margin-top: 8px;
         align-items: center;
         width: 100%;
+        max-width: 100%;
         opacity: 1;
     }
 
     .login-page-president img {
-        width: min(100%, 240px);
-        max-width: 240px;
-        max-height: 290px;
+        width: min(65vw, 220px);
+        max-width: 220px;
+        max-height: none;
+        clip-path: none;
+    }
+
+    .footer-panel {
+        margin-top: 2px;
+        font-size: 0.82rem;
+        word-spacing: 2px;
     }
 
     .login-contact-bar {
         flex-direction: column;
         align-items: center;
-        gap: 0.35rem;
+        gap: 0.2rem;
         text-align: center;
+        margin-top: 4px !important;
+    }
+}
+
+/* Phone-only login tuning: centered card, no horizontal scroll, smaller hero image, and visible top logos. */
+@media (max-width: 768px) {
+    body.login-page:not(.register-page) {
+        align-items: center;
+        justify-content: center;
+        min-height: 100svh;
+        padding: 8px;
+        overflow-x: hidden;
+    }
+
+    body.login-page:not(.register-page) .login-container {
+        width: min(100%, 450px);
+        max-width: 450px;
+        margin: 0 auto;
+        border-radius: 14px;
+        padding: 18px 14px 14px 14px;
+        gap: 10px;
+        transform: none;
+        left: auto;
+    }
+
+    body.login-page:not(.register-page) .content {
+        flex-direction: row;
+        gap: 8px;
+    }
+
+    body.login-page:not(.register-page) .login-panel,
+    body.login-page:not(.register-page) .right-panel {
+        padding: 8px 0;
+    }
+
+    body.login-page:not(.register-page) .login-panel {
+        width: 57%;
+        padding-right: 6px;
+    }
+
+    body.login-page:not(.register-page) .right-panel {
+        width: 43%;
+        padding-left: 4px;
+    }
+
+    body.login-page:not(.register-page) .right-panel {
+        text-align: right;
+        margin-top: 0;
+    }
+
+    body.login-page:not(.register-page) .eac-title {
+        font-size: 0.95rem;
+        letter-spacing: 0.6px;
+    }
+
+    body.login-page:not(.register-page) .aes-subtitle {
+        font-size: 0.72rem;
+        letter-spacing: 0.09em;
+    }
+
+    body.login-page:not(.register-page) .welcome-text {
+        font-size: 0.76rem;
+    }
+
+    body.login-page:not(.register-page) .system-text {
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+    }
+
+    body.login-page:not(.register-page) .login-brief-description,
+    body.login-page:not(.register-page) .login-brief-description .code-learn-improve {
+        text-align: right;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    body.login-page:not(.register-page) .login-brief-description p {
+        font-size: 0.68rem;
+        line-height: 1.35;
+    }
+
+    body.login-page:not(.register-page) .login-brief-description .code-learn-improve {
+        font-size: 0.72rem;
+        margin-top: 6px;
+    }
+
+    body.login-page:not(.register-page) .login-page-president {
+        position: absolute;
+        width: 270px;
+        max-width: 66%;
+        right: -38px;
+        bottom: -66px;
+        justify-content: flex-end;
+        align-items: flex-end;
+        margin-top: 0;
+    }
+
+    body.login-page:not(.register-page) .login-page-president img {
+        width: 100%;
+        max-width: none;
+        max-height: none;
+        clip-path: inset(0 0 3px 0);
+    }
+
+    body.login-page:not(.register-page) .footer-panel {
+        margin-top: 4px;
+        font-size: 0.82rem;
+        word-spacing: 2px;
+    }
+
+    body.login-page:not(.register-page) .login-contact-bar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem 0.9rem;
+        margin-top: 6px !important;
+        font-size: 0.66rem;
+        letter-spacing: 0.02em;
+        text-transform: none;
+    }
+
+    body.login-page:not(.register-page) .auth-corner-seal {
+        display: block;
+        position: fixed;
+        width: 44px;
+        right: max(8px, calc((100vw - 450px) / 2 + 10px));
+        top: auto;
+        bottom: 8px;
+        opacity: 0.95;
+        z-index: 24;
+    }
+
+    body.login-page:not(.register-page) .auth-corner-iso {
+        display: block;
+        position: fixed;
+        width: 40px;
+        right: max(56px, calc((100vw - 450px) / 2 + 58px));
+        top: auto;
+        bottom: 10px;
+        opacity: 0.95;
+        z-index: 24;
+    }
+}
+
+@media (min-width: 769px) {
+    body.login-page:not(.register-page) {
+        padding: 28px 20px;
+    }
+
+    body.login-page:not(.register-page) .login-container {
+        margin: 0 auto;
     }
 }

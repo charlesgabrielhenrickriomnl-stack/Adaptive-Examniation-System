@@ -31,7 +31,17 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
     // 2. IMPROVED Logic for Rendering the Performance Radar Chart (Random Forest)
     const radarBtn = document.getElementById('renderRadarBtn');
+    const toggleChartBtn = document.getElementById('toggleChartBtn');
+    const chartSection = document.getElementById('chartSection');
     let radarChart = null; // Store chart instance for updates
+
+    function setChartVisible(visible) {
+        if (!chartSection) return;
+        chartSection.classList.toggle('hidden', !visible);
+        if (toggleChartBtn) {
+            toggleChartBtn.classList.toggle('d-none', !visible);
+        }
+    }
     
     if (radarBtn) {
         radarBtn.addEventListener('click', async function() {
@@ -51,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 
                 // Reveal the chart section
-                document.getElementById('chartSection').classList.remove('hidden');
+                setChartVisible(true);
                 
                 // Get ALL metrics from backend Random Forest predictions
                 const metricsData = {
@@ -159,7 +169,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Smooth scroll to chart
-                const chartSection = document.getElementById('chartSection');
                 if (chartSection) {
                     window.scrollTo({ 
                         top: chartSection.offsetTop - 100, 
@@ -167,14 +176,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
                 
-                radarBtn.textContent = 'Chart Rendered';
+                radarBtn.textContent = '📊 View Detailed Performance Chart';
+                radarBtn.disabled = false;
                 
             } catch (error) {
                 console.error('Error rendering analytics:', error);
                 alert('Failed to load student analytics. Please try again.');
                 radarBtn.disabled = false;
-                radarBtn.textContent = 'Render Performance Chart';
+                radarBtn.textContent = '📊 View Detailed Performance Chart';
             }
+        });
+    }
+
+    if (toggleChartBtn) {
+        toggleChartBtn.addEventListener('click', function() {
+            const isVisible = chartSection && !chartSection.classList.contains('hidden');
+            setChartVisible(!isVisible);
         });
     }
     
@@ -206,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         summaryDiv.innerHTML = `
             <div class="alert alert-${getAlertClass(overallScore)}" role="alert">
-                <h4 class="alert-heading">Performance Summary (Random Forest Analysis)</h4>
+                <h4 class="alert-heading">Performance Summary</h4>
                 <p><strong>Overall Score:</strong> ${overallScore.toFixed(2)}% - ${performanceLevel}</p>
                 <hr>
                 <p class="mb-0">

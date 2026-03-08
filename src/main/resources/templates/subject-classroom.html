@@ -21,6 +21,21 @@
                 </a>
             </div>
 
+            <div th:if="${successMessage}" class="alert alert-success d-flex align-items-center gap-2 mb-3" role="alert">
+                <i class="bi bi-check-circle-fill"></i>
+                <span th:text="${successMessage}">Quiz successfully distributed to 1 student(s).</span>
+            </div>
+
+            <div th:if="${warningMessage}" class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span th:text="${warningMessage}">Distributed to 1 student(s), but failed for 1 student(s).</span>
+            </div>
+
+            <div th:if="${errorMessage}" class="alert alert-danger d-flex align-items-center gap-2 mb-3" role="alert">
+                <i class="bi bi-x-circle-fill"></i>
+                <span th:text="${errorMessage}">Quiz distribution failed.</span>
+            </div>
+
             <div class="classroom-header">
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                     <div>
@@ -31,22 +46,26 @@
                         <p class="text-muted small mb-2"
                            th:if="${subject.description != null && !subject.description.isEmpty()}"
                            th:text="${subject.description}">Subject Description</p>
-                        <div class="mt-2">
+                        <div class="mt-2 classroom-stats-row">
                             <span class="stat-badge students">
                                 <i class="bi bi-people"></i>
-                                <span th:text="${#lists.size(enrolledStudents)}">0</span> Students
+                                <span class="stat-value" th:text="${#lists.size(enrolledStudents)}">0</span>
+                                <span class="stat-label">Students</span>
                             </span>
                             <span class="stat-badge submissions">
                                 <i class="bi bi-file-text"></i>
-                                <span th:text="${classroomStats.totalSubmissions}">0</span> Submissions
+                                <span class="stat-value" th:text="${classroomStats.totalSubmissions}">0</span>
+                                <span class="stat-label">Submissions</span>
                             </span>
                             <span class="stat-badge submissions">
                                 <i class="bi bi-check-circle"></i>
-                                <span th:text="${classroomStats.gradedCount}">0</span> Graded
+                                <span class="stat-value" th:text="${classroomStats.gradedCount}">0</span>
+                                <span class="stat-label">Graded</span>
                             </span>
                             <span class="stat-badge submissions">
                                 <i class="bi bi-clock-history"></i>
-                                <span th:text="${classroomStats.pendingCount}">0</span> Pending
+                                <span class="stat-value" th:text="${classroomStats.pendingCount}">0</span>
+                                <span class="stat-label">Pending</span>
                             </span>
                         </div>
                     </div>
@@ -426,7 +445,7 @@
         }
     }
 
-    function updateQuestionCountBounds() {
+    function updateQuestionCountBounds(forceMax = false) {
         if (!examSelect || !questionCountInput || !questionCountHint) return;
         const option = examSelect.options[examSelect.selectedIndex];
         const max = option ? parseInt(option.getAttribute('data-question-count') || '0') : 0;
@@ -439,13 +458,16 @@
         } else {
             questionCountInput.min = 1;
             questionCountInput.max = max;
+            if (forceMax) {
+                questionCountInput.value = max;
+            }
             if (parseInt(questionCountInput.value || '1') > max) {
                 questionCountInput.value = max;
             }
             if (parseInt(questionCountInput.value || '1') < 1) {
                 questionCountInput.value = 1;
             }
-            questionCountHint.textContent = `Max: ${max} question(s)`;
+            questionCountHint.textContent = `Max: ${max} question(s). Auto-set to max on exam selection.`;
         }
     }
 
@@ -488,7 +510,7 @@
 
         if (examSelect) {
             examSelect.addEventListener('change', () => {
-                updateQuestionCountBounds();
+                updateQuestionCountBounds(true);
                 updateDistributeBtnState();
                 updateManageQuizButton();
                 saveDistributeModalDraft();

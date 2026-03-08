@@ -8,80 +8,241 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <style>
-        .classroom-hero {
-            background: linear-gradient(135deg, var(--eac-maroon) 0%, #8f1a2e 100%);
-            color: #fff;
-            border-radius: 14px;
-            padding: 2.35rem 2.8rem;
-            margin-bottom: 2.25rem;
+        .classroom-stage {
+            max-width: 1320px;
+            margin: 0 auto;
         }
-        .classroom-hero h2 { font-weight: 700; }
+
+        .classroom-back-btn {
+            border-radius: 999px;
+            border: 1px solid #e7d6c2;
+            color: #5b3a15;
+            font-weight: 600;
+            background: #fff;
+            padding-inline: 0.9rem;
+        }
+
+        .classroom-back-btn:hover {
+            background: #fdf8f1;
+            border-color: #d9c2a5;
+            color: #4d2c0e;
+        }
+
+        .classroom-hero {
+            background:
+                radial-gradient(circle at 90% 14%, rgba(232, 178, 46, 0.22) 0%, rgba(232, 178, 46, 0) 44%),
+                linear-gradient(140deg, #8f1228 0%, #6f0d1f 55%, #560917 100%);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 18px;
+            padding: 1.35rem 1.45rem;
+            margin-bottom: 1.2rem;
+            box-shadow: 0 14px 30px rgba(71, 12, 24, 0.22);
+        }
+
+        .hero-kicker {
+            margin: 0 0 0.22rem;
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+            color: rgba(255, 229, 177, 0.95);
+        }
+
+        .classroom-hero h2 {
+            font-weight: 800;
+            margin-bottom: 0.2rem;
+        }
+
+        .classroom-hero-description {
+            margin: 0.2rem 0 0.95rem;
+            color: rgba(255, 255, 255, 0.84);
+            max-width: 900px;
+        }
+
         .classroom-hero .meta-chip {
             display: inline-flex; align-items: center; gap: 0.35rem;
-            background: rgba(255,255,255,0.15); border-radius: 30px;
-            padding: 0.35rem 0.95rem; font-size: 0.9rem;
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 30px;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.84rem;
+            font-weight: 600;
         }
+
         .section-title {
-            color: var(--eac-maroon); font-weight: 700;
-            border-bottom: 2px solid var(--eac-gold);
-            padding-bottom: 0.5rem; margin-bottom: 1.6rem;
+            color: var(--eac-maroon);
+            font-weight: 800;
+            margin: 0;
         }
+
         .section-block {
-            margin-bottom: 3rem;
+            margin-bottom: 1.2rem;
         }
-        .exam-card {
-            border: 1px solid var(--eac-border);
-            border-radius: 12px;
+
+        .section-panel {
+            background: #fff;
+            border: 1px solid #eadfce;
+            border-radius: 16px;
+            box-shadow: 0 8px 22px rgba(58, 25, 12, 0.08);
             overflow: hidden;
-            transition: box-shadow 0.2s;
         }
-        .exam-card:hover { box-shadow: 0 6px 20px rgba(122,16,34,0.12); }
+
+        .section-panel-head {
+            padding: 0.95rem 1.1rem;
+            border-bottom: 1px solid #eadfce;
+            background: #fff;
+        }
+
+        .section-panel-body {
+            padding: 1rem 1.1rem 1.15rem;
+        }
+
+        .pending-exams-grid {
+            row-gap: 0.9rem;
+        }
+
+        .exam-card {
+            border: 1px solid #e5d7c6;
+            border-radius: 14px;
+            overflow: hidden;
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            background: #fff;
+        }
+
+        .exam-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 26px rgba(81, 25, 11, 0.14);
+        }
+
         .exam-card-header {
-            background: linear-gradient(135deg, var(--eac-maroon), #8f1a2e);
+            background: linear-gradient(140deg, #8f1228 0%, #6f0e20 58%, #580915 100%);
             color: #fff;
-            padding: 1rem 1.25rem;
+            padding: 0.95rem 1rem;
+            min-height: 94px;
+            display: flex;
+            align-items: flex-start;
         }
+
+        .exam-title {
+            line-height: 1.25;
+            max-width: 88%;
+            margin-bottom: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            line-clamp: 2;
+            overflow: hidden;
+        }
+
         .exam-card-header .activity-type-badge {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.24);
             color: #fff;
             border-radius: 20px;
-            padding: 0.15rem 0.65rem;
-            font-size: 0.78rem;
+            border: 1px solid rgba(255,255,255,0.22);
+            padding: 0.18rem 0.6rem;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
-        .deadline-warning { color: #dc3545; font-size: 0.82rem; }
+
+        .exam-card .card-body {
+            padding: 0.92rem 1rem;
+        }
+
+        .exam-meta-item {
+            background: #fff8ee;
+            border: 1px solid #f0dec1;
+            color: #6d5323;
+            border-radius: 999px;
+            padding: 0.2rem 0.6rem;
+            font-size: 0.78rem;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .deadline-warning {
+            color: #b02a37;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .exam-take-btn {
+            border-radius: 10px;
+            background: #7a1022;
+            border-color: #7a1022;
+            font-weight: 700;
+        }
+
+        .exam-take-btn:hover {
+            background: #5f0c1a;
+            border-color: #5f0c1a;
+        }
+
         .badge-score { font-size: 0.83rem; }
-        .hist-thead { background: var(--eac-maroon); color: #fff; }
+
+        .hist-thead {
+            background: #f5ece0;
+            color: #4b2c11;
+            border-bottom: 1px solid #e5d4bf;
+        }
+
         .table-spacious thead th,
         .table-spacious tbody td {
-            padding: 0.9rem 1rem;
+            padding: 0.78rem 0.8rem;
             vertical-align: middle;
         }
-        .empty-state {
-            padding-top: 3rem;
-            padding-bottom: 3rem;
-        }
-        .submission-notification-card {
-            border: 1px solid var(--eac-border);
-            border-radius: 12px;
-            background: #fff;
-            padding: 1.25rem;
-        }
-        .notif-wrap {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.7rem;
-        }
-        .notif-dot {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: #b02a37;
-            color: #fff;
+
+        .table-spacious thead th {
+            font-size: 0.84rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
             font-weight: 700;
-            font-size: 0.9rem;
+        }
+
+        .history-table-wrap {
+            max-height: 420px;
+            overflow: auto;
+        }
+
+        .history-table-wrap thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .empty-state {
+            padding-top: 0.3rem;
+            padding-bottom: 0.2rem;
+        }
+
+        .empty-state-card {
+            border: 1px dashed #d9c8b4;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #fff 0%, #fffaf4 100%);
+            padding: 2rem 1.1rem;
+        }
+
+        .empty-state-card i {
+            font-size: 2.8rem;
+            color: #c6b49f;
+        }
+
+        .empty-state-card h6 {
+            color: #6a5b4d !important;
+            font-weight: 700;
+        }
+
+        @media (max-width: 991px) {
+            .classroom-hero {
+                padding: 1.1rem 1rem;
+            }
+            .section-panel-head,
+            .section-panel-body {
+                padding-left: 0.85rem;
+                padding-right: 0.85rem;
+            }
         }
     </style>
 </head>
@@ -91,10 +252,10 @@
     <div th:replace="~{student-nav :: studentNav}"></div>
 
     <div class="teacher-content-wrapper">
-        <div class="container-fluid px-3 px-lg-4 px-xxl-5">
+        <div class="container-fluid px-3 px-lg-4 px-xxl-5 classroom-stage">
 
             <div class="mb-3">
-                <a th:href="@{/student/dashboard}" class="btn btn-sm btn-light">
+                <a th:href="@{/student/dashboard}" class="btn btn-sm classroom-back-btn">
                     <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
                 </a>
             </div>
@@ -102,11 +263,12 @@
             <div class="classroom-hero">
                 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                     <div>
+                        <p class="hero-kicker">Subject Classroom</p>
                         <h2 class="mb-1">
                             <i class="bi bi-book me-2"></i>
                             <span th:text="${subjectName}">Subject Name</span>
                         </h2>
-                        <p class="mb-3 opacity-75" th:text="${subjectDescription != null && !#strings.isEmpty(subjectDescription) ? subjectDescription : 'No description provided.'}">Description</p>
+                        <p class="classroom-hero-description" th:text="${subjectDescription != null && !#strings.isEmpty(subjectDescription) ? subjectDescription : 'No description provided.'}">Description</p>
                         <div class="d-flex flex-wrap gap-3">
                             <span class="meta-chip">
                                 <i class="bi bi-person"></i>
@@ -121,33 +283,36 @@
                 </div>
             </div>
 
-            <div class="section-block">
-                <h5 class="section-title"><i class="bi bi-hourglass-split me-2"></i>Available Exams</h5>
+            <div class="section-block section-panel">
+                <div class="section-panel-head">
+                    <h5 class="section-title"><i class="bi bi-hourglass-split me-2"></i>Available Exams</h5>
+                </div>
+                <div class="section-panel-body">
 
                 <div th:if="${#lists.isEmpty(pendingExams)}" class="text-center empty-state">
-                    <div class="card upload-card p-4">
-                        <i class="bi bi-calendar-x" style="font-size: 3rem; color: #ccc;"></i>
+                    <div class="empty-state-card">
+                        <i class="bi bi-calendar-x"></i>
                         <h6 class="mt-3 text-muted">No Exam Available</h6>
                         <p class="text-muted small mb-0">Your teacher hasn't distributed an exam for this subject yet.</p>
                     </div>
                 </div>
 
-                <div th:if="${!#lists.isEmpty(pendingExams)}" class="row g-3">
-                    <div class="col-12 col-md-8 col-lg-6" th:each="pendingExam : ${pendingExams}">
+                <div th:if="${!#lists.isEmpty(pendingExams)}" class="row g-3 pending-exams-grid">
+                    <div class="col-12 col-md-6 col-xl-4" th:each="pendingExam : ${pendingExams}">
                         <div class="exam-card shadow-sm">
                             <div class="exam-card-header">
                                 <div class="d-flex justify-content-between align-items-start">
-                                    <h6 class="mb-1 fw-bold" th:text="${pendingExam.name}">Exam Name</h6>
+                                    <h6 class="exam-title fw-bold" th:text="${pendingExam.name}">Exam Name</h6>
                                     <span class="activity-type-badge" th:text="${pendingExam.type}">Type</span>
                                 </div>
                             </div>
                             <div class="card-body p-3">
                                 <div class="d-flex flex-wrap gap-3 mb-3">
-                                    <div class="text-muted small">
+                                    <div class="exam-meta-item">
                                         <i class="bi bi-question-circle me-1"></i>
                                         <span th:text="${pendingExam.questionCount}">0</span> questions
                                     </div>
-                                    <div class="text-muted small">
+                                    <div class="exam-meta-item">
                                         <i class="bi bi-clock me-1"></i>
                                         <span th:text="${pendingExam.timeLimit}">0</span> min
                                     </div>
@@ -157,21 +322,25 @@
                                         Due: <span th:text="${pendingExam.deadline}">Deadline</span>
                                     </div>
                                 </div>
-                                <a th:href="${pendingExam.startUrl}" class="btn btn-primary w-100">
+                                <a th:href="${pendingExam.startUrl}" class="btn btn-primary w-100 exam-take-btn">
                                     <i class="bi bi-play-circle me-1"></i>Take Exam
                                 </a>
                             </div>
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
 
-            <div class="section-block">
-                <h5 class="section-title"><i class="bi bi-clock-history me-2"></i>Recent Exam Attempts</h5>
+            <div class="section-block section-panel">
+                <div class="section-panel-head">
+                    <h5 class="section-title"><i class="bi bi-clock-history me-2"></i>Examination History</h5>
+                </div>
+                <div class="section-panel-body">
 
                 <div th:if="${!hasHistory}" class="text-center empty-state">
-                    <div class="card upload-card p-4">
-                        <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                    <div class="empty-state-card">
+                        <i class="bi bi-inbox"></i>
                         <h6 class="mt-3 text-muted">No Submissions Yet</h6>
                         <p class="text-muted small mb-0">Completed exams for this subject will appear here.</p>
                     </div>
@@ -179,7 +348,7 @@
 
                 <div th:if="${hasHistory}" class="card upload-card shadow-sm">
                     <div class="card-body p-0">
-                        <div class="table-responsive">
+                        <div class="table-responsive history-table-wrap">
                             <table class="table table-hover table-spacious mb-0">
                                 <thead class="hist-thead">
                                     <tr>
@@ -222,7 +391,7 @@
                                         </td>
                                         <td>
                                             <div class="btn-group btn-group-sm" role="group">
-                                                <a th:href="@{/student/results/{id}(id=${submission.id})}"
+                                                <a th:href="@{/student/results/{id}(id=${submission.id}, classroomId=${subjectId})}"
                                                    class="btn btn-outline-primary" title="View Results">
                                                     <i class="bi bi-eye"></i> View
                                                 </a>
@@ -243,6 +412,7 @@
                             Showing <strong th:text="${#lists.size(subjectSubmissions)}">0</strong> submission(s)
                         </small>
                     </div>
+                </div>
                 </div>
             </div>
 

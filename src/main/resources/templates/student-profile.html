@@ -9,53 +9,157 @@
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <style>
         .profile-shell {
-            max-width: 1200px;
+            max-width: 1320px;
             margin: 0 auto;
         }
 
+        .profile-stage {
+            background: #fff;
+            border: 1px solid var(--eac-border);
+            border-radius: 18px;
+            box-shadow: 0 12px 28px rgba(60, 36, 13, 0.09);
+            padding: 1rem;
+        }
+
         .profile-hero {
-            background: linear-gradient(135deg, var(--eac-maroon) 0%, #8f1a2e 100%);
+            background:
+                radial-gradient(circle at 90% 14%, rgba(232, 178, 46, 0.24) 0%, rgba(232, 178, 46, 0) 42%),
+                linear-gradient(140deg, #8f1228 0%, #6f0e20 58%, #580915 100%);
             color: #fff;
-            border-radius: 14px;
-            padding: 1.4rem 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 1.2rem 1.25rem;
             margin-bottom: 1rem;
+            box-shadow: 0 12px 24px rgba(71, 12, 24, 0.2);
+        }
+
+        .profile-kicker {
+            margin: 0 0 0.2rem;
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+            color: rgba(255, 229, 177, 0.95);
+        }
+
+        .profile-subtitle {
+            margin: 0.45rem 0 0;
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 0.9rem;
         }
 
         .profile-avatar {
-            width: 64px;
-            height: 64px;
+            width: 72px;
+            height: 72px;
             border-radius: 50%;
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.22);
+            border: 1px solid rgba(255,255,255,0.22);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.9rem;
+            font-size: 2rem;
             flex-shrink: 0;
+        }
+
+        .profile-role-pill {
+            background: rgba(212, 163, 42, 0.94);
+            color: #3a0a10;
+            border-radius: 999px;
+            padding: 0.25rem 0.68rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            border: 1px solid rgba(255,255,255,0.35);
+        }
+
+        .profile-email {
+            margin: 0;
+            color: rgba(255,255,255,0.9);
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
         }
 
         .stat-card {
             border: 1px solid var(--eac-border);
-            border-radius: 12px;
-            padding: 1rem;
+            border-radius: 14px;
+            padding: 1rem 0.9rem;
             text-align: center;
             min-height: 112px;
-            transition: box-shadow 0.2s;
+            transition: transform 0.18s ease, box-shadow 0.2s;
+            background: linear-gradient(180deg, #fff 0%, #fff9f2 100%);
         }
 
         .stat-card:hover {
-            box-shadow: 0 4px 14px rgba(122,16,34,0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(122,16,34,0.12);
         }
 
         .stat-value {
             font-size: 1.85rem;
-            font-weight: 700;
+            font-weight: 800;
             color: var(--eac-maroon);
+            line-height: 1.05;
+            margin-bottom: 0.35rem;
         }
 
         .stat-label {
-            font-size: 0.82rem;
-            color: #666;
-            margin-top: 0.15rem;
+            font-size: 0.81rem;
+            color: #5d4b3a;
+            margin-top: 0;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+
+        .stat-card.passed .stat-value {
+            color: #1f7b49;
+        }
+
+        .profile-controls {
+            border: 1px solid #eadfce;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #fff 0%, #fffaf5 100%);
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        .profile-logout-btn {
+            border-radius: 10px;
+            background: #7a1022;
+            border-color: #7a1022;
+            font-weight: 700;
+            padding: 0.55rem 1.1rem;
+            min-width: 160px;
+        }
+
+        .profile-logout-btn:hover,
+        .profile-logout-btn:focus {
+            background: #5f0d1a;
+            border-color: #5f0d1a;
+            color: #fff;
+        }
+
+        @media (max-width: 992px) {
+            .profile-stage {
+                padding: 0.8rem;
+            }
+
+            .profile-hero {
+                padding: 1rem;
+            }
+
+            .profile-email {
+                font-size: 0.95rem;
+            }
         }
     </style>
 </head>
@@ -66,55 +170,58 @@
 
     <div class="teacher-content-wrapper">
         <div class="container profile-shell">
-            <div class="profile-hero">
-                <div class="d-flex align-items-center gap-3 flex-wrap">
-                    <div class="profile-avatar">
-                        <i class="bi bi-person-fill"></i>
-                    </div>
-                    <div>
-                        <h2 class="mb-1 fw-bold" th:text="${currentUserFullName != null ? currentUserFullName : studentEmail}">Student Name</h2>
-                        <p class="mb-2 opacity-75">
-                            <i class="bi bi-envelope me-1"></i>
-                            <span th:text="${currentUserEmail != null ? currentUserEmail : studentEmail}">student@email.com</span>
-                        </p>
-                        <span class="badge" style="background: rgba(212,175,55,0.9); color: #3a0a10; font-size:0.8rem;">
-                            <i class="bi bi-mortarboard me-1"></i>Student
-                        </span>
+            <div class="profile-stage">
+                <div class="profile-hero">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <div class="profile-avatar">
+                            <i class="bi bi-person-fill"></i>
+                        </div>
+                        <div>
+                            <p class="profile-kicker">Student Profile</p>
+                            <h2 class="mb-1 fw-bold" th:text="${currentUserFullName != null ? currentUserFullName : studentEmail}">Student Name</h2>
+                            <p class="profile-email mb-2">
+                                <i class="bi bi-envelope"></i>
+                                <span th:text="${currentUserEmail != null ? currentUserEmail : studentEmail}">student@email.com</span>
+                            </p>
+                            <span class="profile-role-pill">
+                                <i class="bi bi-mortarboard-fill"></i>
+                                Student
+                            </span>
+                            <p class="profile-subtitle">Track your progress and monitor your exam performance at a glance.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-6 col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-value" th:text="${totalAttempts}">0</div>
-                        <div class="stat-label"><i class="bi bi-file-earmark-text me-1"></i>Exams Taken</div>
+                <div class="row g-3 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card attempts">
+                            <div class="stat-value" th:text="${totalAttempts}">0</div>
+                            <div class="stat-label"><i class="bi bi-file-earmark-text me-1"></i>Exams Taken</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card avg">
+                            <div class="stat-value" th:text="${avgScore + '%'}">0%</div>
+                            <div class="stat-label"><i class="bi bi-bar-chart-line me-1"></i>Average Score</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card passed">
+                            <div class="stat-value" th:text="${passedCount}">0</div>
+                            <div class="stat-label"><i class="bi bi-check-circle me-1"></i>Passed</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card best">
+                            <div class="stat-value" th:text="${bestScore + '%'}">0%</div>
+                            <div class="stat-label"><i class="bi bi-trophy me-1"></i>Best Score</div>
+                        </div>
                     </div>
                 </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-value" th:text="${avgScore + '%'}">0%</div>
-                        <div class="stat-label"><i class="bi bi-bar-chart me-1"></i>Average Score</div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-value text-success" th:text="${passedCount}">0</div>
-                        <div class="stat-label"><i class="bi bi-check-circle me-1"></i>Passed</div>
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
-                    <div class="stat-card">
-                        <div class="stat-value" th:text="${bestScore + '%'}">0%</div>
-                        <div class="stat-label"><i class="bi bi-trophy me-1"></i>Best Score</div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="card upload-card">
-                <div class="card-body p-4 text-center">
+                <div class="profile-controls">
                     <form th:action="@{/logout}" method="post" class="d-inline-block">
-                        <button type="submit" class="btn btn-primary px-4">
+                        <button type="submit" class="btn btn-primary profile-logout-btn">
                             <i class="bi bi-box-arrow-right me-1"></i> Logout
                         </button>
                     </form>

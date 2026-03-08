@@ -59,15 +59,38 @@
     border-left-width: 4px;
 }
 
+.classroom-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .stat-badge {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
     padding: 0.4rem 0.9rem;
     border-radius: 20px;
     font-weight: 600;
     font-size: 0.85rem;
-    margin-right: 0.6rem;
+    line-height: 1;
+    margin-right: 0;
+}
+
+.stat-badge i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.stat-badge .stat-value,
+.stat-badge .stat-label {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
 }
 
 .stat-badge.students {
