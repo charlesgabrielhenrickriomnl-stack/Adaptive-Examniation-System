@@ -202,6 +202,7 @@ public class DepartmentAdminController {
 
     @PostMapping("/import-students")
     public String importStudents(@RequestParam("studentListFile") MultipartFile studentListFile,
+                                 @RequestParam(name = "teacherEmail", required = false) String teacherEmail,
                                  @RequestParam(name = "departmentName", required = false) String departmentName,
                                  @RequestParam(name = "programName", required = false) String programName,
                                  Principal principal,
@@ -213,38 +214,65 @@ public class DepartmentAdminController {
             return "redirect:/department-admin/dashboard";
         }
 
-        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
         String adminDepartment = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
-        if (AcademicCatalog.isValidDepartment(adminDepartment)
-            && !adminDepartment.equalsIgnoreCase(normalizedDepartment)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "You can import students only for your assigned department.");
-            return "redirect:/department-admin/dashboard";
+        String normalizedTeacherEmail = normalizeEmail(teacherEmail);
+        User selectedTeacher = normalizedTeacherEmail.isBlank()
+            ? null
+            : userRepository.findByEmail(normalizedTeacherEmail).orElse(null);
+
+        String fallbackDepartment = departmentName == null ? "" : departmentName.trim();
+        String redirectDepartment = fallbackDepartment.isBlank() ? adminDepartment : fallbackDepartment;
+        if (selectedTeacher != null && selectedTeacher.getDepartmentName() != null) {
+            redirectDepartment = selectedTeacher.getDepartmentName().trim();
+        }
+        String redirectTarget = buildDepartmentViewRedirect(redirectDepartment);
+
+        if (selectedTeacher == null || selectedTeacher.getRole() != User.Role.TEACHER) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid teacher.");
+            return redirectTarget;
         }
 
-        if (normalizedDepartment.isBlank()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a department.");
-            return "redirect:/department-admin/dashboard";
+        String teacherDepartment = selectedTeacher.getDepartmentName() == null ? "" : selectedTeacher.getDepartmentName().trim();
+        if (!sameDepartment(teacherDepartment, adminDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You can import students only for teachers in your department.");
+            return redirectTarget;
         }
 
-        if (!AcademicCatalog.isValidDepartment(normalizedDepartment)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid department.");
-            return "redirect:/department-admin/dashboard";
+        if (!AcademicCatalog.isValidDepartment(teacherDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher has invalid department assignment.");
+            return redirectTarget;
         }
 
-        String normalizedProgram = programName == null ? "" : programName.trim();
-        if (!AcademicCatalog.isValidProgram(normalizedDepartment, normalizedProgram)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid program for the selected department.");
-            return "redirect:/department-admin/dashboard";
+        String teacherProgram = selectedTeacher.getProgramName() == null ? "" : selectedTeacher.getProgramName().trim();
+        if (!AcademicCatalog.isValidProgram(teacherDepartment, teacherProgram)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher must have a valid program before importing students.");
+            return redirectTarget;
         }
+
+        List<Subject> teacherSubjects = subjectRepository.findByTeacherEmail(selectedTeacher.getEmail()).stream()
+            .filter(subject -> subject != null && subject.getId() != null)
+            .sorted(Comparator.comparing(Subject::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
+
+        if (teacherSubjects.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher must have at least one subject to enroll imported students.");
+            return redirectTarget;
+        }
+
+        Subject targetSubject = teacherSubjects.get(0);
+        String normalizedDepartment = teacherDepartment;
+        String normalizedProgram = teacherProgram;
+        String resolvedTeacherEmail = selectedTeacher.getEmail() == null ? normalizedTeacherEmail : selectedTeacher.getEmail().trim();
 
         if (studentListFile == null || studentListFile.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Please upload a CSV file.");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         int rowsRead = 0;
         int createdAccounts = 0;
         int updatedAccounts = 0;
+        int enrolledCount = 0;
         int skippedRows = 0;
         Set<String> seenEmails = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -332,23 +360,179 @@ public class DepartmentAdminController {
                         updatedAccounts++;
                     }
                 }
+
+                if (enrolledStudentRepository.findByTeacherEmailAndStudentEmailAndSubjectId(resolvedTeacherEmail, rawEmail, targetSubject.getId()).isEmpty()) {
+                    String studentName = rawName.isBlank() ? rawEmail : rawName;
+                    EnrolledStudent enrollment = new EnrolledStudent(
+                        resolvedTeacherEmail,
+                        rawEmail,
+                        studentName,
+                        targetSubject.getId(),
+                        targetSubject.getSubjectName()
+                    );
+                    enrolledStudentRepository.save(enrollment);
+                    enrolledCount++;
+                }
             }
         } catch (IOException exception) {
             redirectAttributes.addFlashAttribute("errorMessage", "Unable to read the uploaded CSV file.");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         if (rowsRead == 0) {
             redirectAttributes.addFlashAttribute("errorMessage", "No student rows found. Use CSV format: Full Name,Email,Password(optional).");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         String summary = "Import complete: "
+            + enrolledCount + " enrolled under " + resolvedTeacherEmail + ", "
             + createdAccounts + " account(s) created, "
             + updatedAccounts + " account(s) updated, "
             + skippedRows + " row(s) skipped.";
         redirectAttributes.addFlashAttribute("successMessage", summary);
-        return "redirect:/department-admin/dashboard";
+        return redirectTarget;
+    }
+
+    @PostMapping("/import-teachers")
+    public String importTeachers(@RequestParam("teacherListFile") MultipartFile teacherListFile,
+                                 @RequestParam(name = "departmentName", required = false) String departmentName,
+                                 @RequestParam(name = "programName", required = false) String programName,
+                                 Principal principal,
+                                 RedirectAttributes redirectAttributes) {
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        if (currentAdmin == null || currentAdmin.getRole() != User.Role.DEPARTMENT_ADMIN) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Only Department Admin can import teachers here.");
+            return "redirect:/department-admin/dashboard";
+        }
+
+        String adminDepartment = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        String redirectTarget = buildDepartmentViewRedirect(normalizedDepartment.isBlank() ? adminDepartment : normalizedDepartment);
+
+        if (!sameDepartment(adminDepartment, normalizedDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You can import teachers only for your department.");
+            return redirectTarget;
+        }
+
+        if (!AcademicCatalog.isValidProgram(normalizedDepartment, programName == null ? "" : programName.trim())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid program for the selected department.");
+            return redirectTarget;
+        }
+
+        if (teacherListFile == null || teacherListFile.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please upload a CSV file.");
+            return redirectTarget;
+        }
+
+        String normalizedProgram = programName == null ? "" : programName.trim();
+        int rowsRead = 0;
+        int createdAccounts = 0;
+        int updatedAccounts = 0;
+        int skippedRows = 0;
+        Set<String> seenEmails = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(teacherListFile.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+
+                String[] columns = parseCsvRow(line);
+                if (columns.length < 2) {
+                    continue;
+                }
+
+                String rawName = columns[0] == null ? "" : columns[0].trim();
+                String rawEmail = columns[1] == null ? "" : normalizeEmail(columns[1]);
+                String rawPassword = columns.length >= 3 && columns[2] != null ? columns[2].trim() : "";
+
+                if (rowsRead == 0 && "email".equalsIgnoreCase(rawEmail)) {
+                    rowsRead++;
+                    continue;
+                }
+                rowsRead++;
+
+                if (rawEmail.isBlank() || !rawEmail.contains("@") || !seenEmails.add(rawEmail)) {
+                    skippedRows++;
+                    continue;
+                }
+
+                String effectiveName = rawName.isBlank() ? rawEmail : rawName;
+                String effectivePassword = rawPassword.isBlank() ? DEFAULT_IMPORTED_STUDENT_PASSWORD : rawPassword;
+
+                User teacher = userRepository.findByEmail(rawEmail).orElse(null);
+                if (teacher == null) {
+                    teacher = new User();
+                    teacher.setEmail(rawEmail);
+                    teacher.setPassword(passwordEncoder.encode(effectivePassword));
+                    teacher.setFullName(effectiveName);
+                    teacher.setSchoolName(AcademicCatalog.SCHOOL_NAME);
+                    teacher.setCampusName(AcademicCatalog.CAMPUS_NAME);
+                    teacher.setDepartmentName(normalizedDepartment);
+                    teacher.setProgramName(normalizedProgram);
+                    teacher.setRole(User.Role.TEACHER);
+                    teacher.setEnabled(true);
+                    teacher.setVerificationToken(null);
+                    userRepository.save(teacher);
+                    createdAccounts++;
+                } else if (teacher.getRole() != User.Role.TEACHER) {
+                    skippedRows++;
+                    continue;
+                } else {
+                    boolean changed = false;
+                    if (!effectiveName.equals(teacher.getFullName())) {
+                        teacher.setFullName(effectiveName);
+                        changed = true;
+                    }
+                    if (!AcademicCatalog.SCHOOL_NAME.equals(teacher.getSchoolName())) {
+                        teacher.setSchoolName(AcademicCatalog.SCHOOL_NAME);
+                        changed = true;
+                    }
+                    if (!AcademicCatalog.CAMPUS_NAME.equals(teacher.getCampusName())) {
+                        teacher.setCampusName(AcademicCatalog.CAMPUS_NAME);
+                        changed = true;
+                    }
+                    if (!normalizedDepartment.equals(teacher.getDepartmentName())) {
+                        teacher.setDepartmentName(normalizedDepartment);
+                        changed = true;
+                    }
+                    if (!normalizedProgram.equals(teacher.getProgramName() == null ? "" : teacher.getProgramName())) {
+                        teacher.setProgramName(normalizedProgram);
+                        changed = true;
+                    }
+                    if (!teacher.isEnabled()) {
+                        teacher.setEnabled(true);
+                        changed = true;
+                    }
+                    if (!rawPassword.isBlank()) {
+                        teacher.setPassword(passwordEncoder.encode(rawPassword));
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        userRepository.save(teacher);
+                        updatedAccounts++;
+                    }
+                }
+            }
+        } catch (IOException exception) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to read the uploaded CSV file.");
+            return redirectTarget;
+        }
+
+        if (rowsRead == 0) {
+            redirectAttributes.addFlashAttribute("errorMessage", "No teacher rows found. Use CSV format: Full Name,Email,Password(optional).");
+            return redirectTarget;
+        }
+
+        String summary = "Teacher import complete: "
+            + createdAccounts + " account(s) created, "
+            + updatedAccounts + " account(s) updated, "
+            + skippedRows + " row(s) skipped.";
+        redirectAttributes.addFlashAttribute("successMessage", summary);
+        return redirectTarget;
     }
 
     @GetMapping("/question-bank")
@@ -365,9 +549,10 @@ public class DepartmentAdminController {
             ? ""
             : currentAdmin.getDepartmentName().trim();
 
-        final String selectedDepartment = AcademicCatalog.isValidDepartment(adminDepartment)
-            ? adminDepartment
-            : "";
+        String requestedDepartment = departmentName == null ? "" : departmentName.trim();
+        final String selectedDepartment = AcademicCatalog.isValidDepartment(requestedDepartment)
+            ? requestedDepartment
+            : (AcademicCatalog.isValidDepartment(adminDepartment) ? adminDepartment : "");
         final String selectedSubject = subject == null ? "" : subject.trim();
 
         List<String> teacherEmailsInDepartment = userRepository.findAll().stream()
@@ -562,12 +747,29 @@ public class DepartmentAdminController {
             .distinct()
             .count();
 
+        long departmentQuestionCount = questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+            .filter(item -> sameDepartment(resolveItemDepartment(item, teachersInDepartment.stream().collect(Collectors.toMap(
+                teacher -> normalizeEmail(teacher.getEmail()),
+                teacher -> teacher,
+                (left, right) -> left,
+                HashMap::new
+            ))), selectedDepartment))
+            .count();
+
         model.addAttribute("selectedDepartment", selectedDepartment);
-        model.addAttribute("departmentOptions", AcademicCatalog.DEPARTMENTS);
+        model.addAttribute("teacherOptions", teachersInDepartment);
+        model.addAttribute("teacherProgramByEmail", teachersInDepartment.stream().collect(Collectors.toMap(
+            teacher -> normalizeEmail(teacher.getEmail()),
+            teacher -> teacher.getProgramName() == null ? "" : teacher.getProgramName().trim(),
+            (left, right) -> left,
+            LinkedHashMap::new
+        )));
+        model.addAttribute("programOptionsByDepartment", AcademicCatalog.PROGRAMS_BY_DEPARTMENT);
         model.addAttribute("teacherRows", teacherRows);
         model.addAttribute("teacherCount", teachersInDepartment.size());
         model.addAttribute("subjectCount", subjectsInDepartment.size());
         model.addAttribute("studentCount", totalUniqueStudents);
+        model.addAttribute("departmentQuestionCount", departmentQuestionCount);
         return "department-admin-department-view";
     }
 
@@ -618,6 +820,16 @@ public class DepartmentAdminController {
 
     private String normalizeEmail(String email) {
         return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private String buildDepartmentViewRedirect(String departmentName) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return "redirect:/department-admin/department-view";
+        }
+
+        return "redirect:/department-admin/department-view?departmentName="
+            + java.net.URLEncoder.encode(normalizedDepartment, StandardCharsets.UTF_8);
     }
 
     private String[] parseCsvRow(String line) {
