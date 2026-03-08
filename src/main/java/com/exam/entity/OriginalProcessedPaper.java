@@ -35,6 +35,27 @@ public class OriginalProcessedPaper {
     @Column(name = "source_filename")
     private String sourceFilename;
 
+    @Column(name = "source_file_path")
+    private String sourceFilePath;
+
+    @Column(name = "source_file_checksum", length = 64)
+    private String sourceFileChecksum;
+
+    @Column(name = "source_file_size")
+    private Long sourceFileSize;
+
+    @Column(name = "answer_key_filename")
+    private String answerKeyFilename;
+
+    @Column(name = "answer_key_file_path")
+    private String answerKeyFilePath;
+
+    @Column(name = "answer_key_file_checksum", length = 64)
+    private String answerKeyFileChecksum;
+
+    @Column(name = "answer_key_file_size")
+    private Long answerKeyFileSize;
+
     @Column(name = "original_questions_json", columnDefinition = "LONGTEXT", nullable = false)
     private String originalQuestionsJson;
 
@@ -92,6 +113,27 @@ public class OriginalProcessedPaper {
 
     public String getSourceFilename() { return sourceFilename; }
     public void setSourceFilename(String sourceFilename) { this.sourceFilename = sourceFilename; }
+
+    public String getSourceFilePath() { return sourceFilePath; }
+    public void setSourceFilePath(String sourceFilePath) { this.sourceFilePath = sourceFilePath; }
+
+    public String getSourceFileChecksum() { return sourceFileChecksum; }
+    public void setSourceFileChecksum(String sourceFileChecksum) { this.sourceFileChecksum = sourceFileChecksum; }
+
+    public Long getSourceFileSize() { return sourceFileSize; }
+    public void setSourceFileSize(Long sourceFileSize) { this.sourceFileSize = sourceFileSize; }
+
+    public String getAnswerKeyFilename() { return answerKeyFilename; }
+    public void setAnswerKeyFilename(String answerKeyFilename) { this.answerKeyFilename = answerKeyFilename; }
+
+    public String getAnswerKeyFilePath() { return answerKeyFilePath; }
+    public void setAnswerKeyFilePath(String answerKeyFilePath) { this.answerKeyFilePath = answerKeyFilePath; }
+
+    public String getAnswerKeyFileChecksum() { return answerKeyFileChecksum; }
+    public void setAnswerKeyFileChecksum(String answerKeyFileChecksum) { this.answerKeyFileChecksum = answerKeyFileChecksum; }
+
+    public Long getAnswerKeyFileSize() { return answerKeyFileSize; }
+    public void setAnswerKeyFileSize(Long answerKeyFileSize) { this.answerKeyFileSize = answerKeyFileSize; }
 
     public String getOriginalQuestionsJson() { return originalQuestionsJson; }
     public void setOriginalQuestionsJson(String originalQuestionsJson) { this.originalQuestionsJson = originalQuestionsJson; }

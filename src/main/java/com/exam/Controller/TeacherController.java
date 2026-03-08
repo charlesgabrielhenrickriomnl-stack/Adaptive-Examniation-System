@@ -52,6 +52,7 @@ import com.exam.repository.QuestionBankItemRepository;
 import com.exam.repository.SubjectRepository;
 import com.exam.repository.UserRepository;
 import com.exam.service.FisherYatesService;
+import com.exam.service.UploadStorageService;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -109,6 +110,9 @@ public class TeacherController {
 
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired
+    private UploadStorageService uploadStorageService;
 
     @GetMapping("/homepage")
     public String homepage(Model model, Principal principal) {
@@ -277,6 +281,28 @@ public class TeacherController {
                 gson.toJson(difficulties),
                 gson.toJson(answerKeyMap)
             );
+
+            UploadStorageService.StoredFile sourceFile = uploadStorageService.store(
+                "processed-exams",
+                principal.getName(),
+                examCreated
+            );
+            paper.setSourceFilename(sourceFile.originalFilename());
+            paper.setSourceFilePath(sourceFile.relativePath());
+            paper.setSourceFileChecksum(sourceFile.checksum());
+            paper.setSourceFileSize(sourceFile.size());
+
+            if (answerKeyPdf != null && !answerKeyPdf.isEmpty()) {
+                UploadStorageService.StoredFile answerKeyFile = uploadStorageService.store(
+                    "processed-exams-answer-keys",
+                    principal.getName(),
+                    answerKeyPdf
+                );
+                paper.setAnswerKeyFilename(answerKeyFile.originalFilename());
+                paper.setAnswerKeyFilePath(answerKeyFile.relativePath());
+                paper.setAnswerKeyFileChecksum(answerKeyFile.checksum());
+                paper.setAnswerKeyFileSize(answerKeyFile.size());
+            }
 
             originalProcessedPaperRepository.save(paper);
             syncQuestionBankForPaper(paper, questions, difficulties, answerKeyMap);
