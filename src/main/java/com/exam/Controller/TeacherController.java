@@ -1352,6 +1352,7 @@ public class TeacherController {
 
         List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
         Map<String, String> difficultiesMap = parseSimpleMapJson(paper.getDifficultiesJson());
+        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
 
         if (questions.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "No questions available in selected exam.");
