@@ -44,15 +44,18 @@
                         <tr>
                             <th>Student</th>
                             <th>Email</th>
+                            <th>Program</th>
                             <th>Enrolled</th>
                             <th style="width:80px;">Actions</th>
                         </tr>
                         </thead>
                         <tbody>
                         <tr th:each="student : ${enrolledStudents}"
-                            th:attr="data-search-key=${#strings.toLowerCase(student.studentName) + ' ' + #strings.toLowerCase(student.studentEmail)}">
+                            th:with="program=${studentProgramByEmail[#strings.toLowerCase(student.studentEmail)]}"
+                            th:attr="data-search-key=${#strings.toLowerCase(student.studentName) + ' ' + #strings.toLowerCase(student.studentEmail) + ' ' + #strings.toLowerCase(program != null ? program : '')}">
                             <td><span class="fw-semibold" th:text="${student.studentName}">Name</span></td>
                             <td class="text-muted" th:text="${student.studentEmail}">email</td>
+                            <td class="text-muted" th:text="${program != null && !#strings.isEmpty(program) ? program : '-'}">-</td>
                             <td class="text-muted small"
                                 th:text="${#temporals.format(student.enrolledAt, 'MMM dd, yyyy')}">Date</td>
                             <td>
