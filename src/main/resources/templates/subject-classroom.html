@@ -195,6 +195,8 @@
                                         <label class="form-check-label" th:for="'sel_' + ${student.id}">
                                             <span class="fw-semibold" th:text="${student.studentName}">Student</span>
                                             <small class="text-muted d-block" th:text="${student.studentEmail}">email</small>
+                                            <small class="text-muted d-block"
+                                                   th:text="${(studentProgramByEmail != null && studentProgramByEmail[#strings.toLowerCase(student.studentEmail)] != null && !#strings.isEmpty(studentProgramByEmail[#strings.toLowerCase(student.studentEmail)])) ? studentProgramByEmail[#strings.toLowerCase(student.studentEmail)] : '-'}">Program</small>
                                         </label>
                                     </div>
                                 </div>
@@ -341,19 +343,18 @@
                         <h6 class="fw-semibold mb-2"><i class="bi bi-upload me-1"></i>Bulk Import (CSV)</h6>
                         <form th:action="@{/teacher/enroll-students/import}" method="post" enctype="multipart/form-data">
                             <input type="hidden" name="subjectId" th:value="${subject.id}">
+                            <input type="hidden" name="departmentName" th:value="${currentTeacherDepartment}">
                             <div class="mb-3">
                                 <label class="form-label">Department</label>
-                                <select class="form-select" id="importDepartmentSelect" name="departmentName" required>
-                                    <option value="">-- Select department --</option>
-                                    <option th:each="department : ${departmentOptions}"
-                                            th:value="${department}"
-                                            th:text="${department}">Department</option>
-                                </select>
+                                <input type="text" class="form-control" th:value="${currentTeacherDepartment}" readonly>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Program</label>
                                 <select class="form-select" id="importProgramSelect" name="programName">
                                     <option value="">-- Select program --</option>
+                                    <option th:each="program : ${currentTeacherPrograms}"
+                                            th:value="${program}"
+                                            th:text="${program}">Program</option>
                                 </select>
                             </div>
                             <div class="mb-2">
@@ -668,6 +669,8 @@
 
             importDepartmentSelect.addEventListener('change', syncImportPrograms);
             syncImportPrograms();
+        } else if (importProgramSelect) {
+            importProgramSelect.required = importProgramSelect.options.length > 1;
         }
 
         // Chevron rotate on collapse

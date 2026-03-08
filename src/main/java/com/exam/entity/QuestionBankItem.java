@@ -26,6 +26,9 @@ public class QuestionBankItem {
     @Column(name = "source_teacher_email")
     private String sourceTeacherEmail;
 
+    @Column(name = "source_teacher_department")
+    private String sourceTeacherDepartment;
+
     @Column(name = "subject", nullable = false)
     private String subject;
 
@@ -65,6 +68,9 @@ public class QuestionBankItem {
 
     public String getSourceTeacherEmail() { return sourceTeacherEmail; }
     public void setSourceTeacherEmail(String sourceTeacherEmail) { this.sourceTeacherEmail = sourceTeacherEmail; }
+
+    public String getSourceTeacherDepartment() { return sourceTeacherDepartment; }
+    public void setSourceTeacherDepartment(String sourceTeacherDepartment) { this.sourceTeacherDepartment = sourceTeacherDepartment; }
 
     public String getSubject() { return subject; }
     public void setSubject(String subject) { this.subject = subject; }

@@ -26,9 +26,11 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import com.exam.config.AcademicCatalog;
+import com.exam.entity.EnrolledStudent;
 import com.exam.entity.QuestionBankItem;
 import com.exam.entity.Subject;
 import com.exam.entity.User;
+import com.exam.repository.EnrolledStudentRepository;
 import com.exam.repository.QuestionBankItemRepository;
 import com.exam.repository.SubjectRepository;
 import com.exam.repository.UserRepository;
@@ -41,15 +43,18 @@ public class DepartmentAdminController {
 
     private final UserRepository userRepository;
     private final SubjectRepository subjectRepository;
+    private final EnrolledStudentRepository enrolledStudentRepository;
     private final QuestionBankItemRepository questionBankItemRepository;
     private final BCryptPasswordEncoder passwordEncoder;
 
     public DepartmentAdminController(UserRepository userRepository,
                                      SubjectRepository subjectRepository,
+                                     EnrolledStudentRepository enrolledStudentRepository,
                                      QuestionBankItemRepository questionBankItemRepository,
                                      BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.subjectRepository = subjectRepository;
+        this.enrolledStudentRepository = enrolledStudentRepository;
         this.questionBankItemRepository = questionBankItemRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -63,11 +68,14 @@ public class DepartmentAdminController {
             ? ""
             : currentAdmin.getDepartmentName().trim();
 
-        List<String> teacherEmailsInDepartment = userRepository.findAll().stream()
+        List<User> allTeachers = userRepository.findAll().stream()
             .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
+            .filter(user -> user.getEmail() != null && !user.getEmail().isBlank())
+            .toList();
+
+        List<String> teacherEmailsInDepartment = allTeachers.stream()
             .filter(user -> departmentName.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
             .map(User::getEmail)
-            .filter(value -> value != null && !value.isBlank())
             .distinct()
             .toList();
 
@@ -81,62 +89,120 @@ public class DepartmentAdminController {
                 .toList();
 
         Map<String, User> teacherProfilesByEmail = new HashMap<>();
-        if (!teacherEmailsInDepartment.isEmpty()) {
-            for (User teacher : userRepository.findByEmailIn(teacherEmailsInDepartment)) {
-                if (teacher != null && teacher.getEmail() != null) {
-                    teacherProfilesByEmail.put(teacher.getEmail().trim().toLowerCase(), teacher);
-                }
+        for (User teacher : allTeachers) {
+            if (teacher != null && teacher.getEmail() != null) {
+                teacherProfilesByEmail.put(teacher.getEmail().trim().toLowerCase(), teacher);
             }
         }
 
-        List<QuestionBankItem> departmentQuestionBank = teacherEmailsInDepartment.isEmpty()
-            ? new ArrayList<>()
-            : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
-                .filter(item -> item.getSourceTeacherEmail() != null)
-                .filter(item -> teacherEmailsInDepartment.stream()
-                    .anyMatch(email -> email.equalsIgnoreCase(item.getSourceTeacherEmail().trim())))
+        Map<String, List<String>> teacherEmailsByDepartment = new LinkedHashMap<>();
+        for (String option : AcademicCatalog.DEPARTMENTS) {
+            String normalizedOption = option == null ? "" : option.trim();
+            List<String> emails = allTeachers.stream()
+                .filter(user -> normalizedOption.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
+                .map(User::getEmail)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase())
+                .distinct()
                 .toList();
+            teacherEmailsByDepartment.put(normalizedOption, emails);
+        }
 
-        List<Map<String, Object>> departmentQuestionBankRows = departmentQuestionBank.stream()
-            .map(item -> {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("id", item.getId());
-                row.put("subject", item.getSubject() == null ? "" : item.getSubject());
-                row.put("sourceExamName", item.getSourceExamName() == null ? "" : item.getSourceExamName());
-                row.put("difficulty", item.getDifficulty() == null ? "Medium" : item.getDifficulty());
-                row.put("sourceTeacherEmail", item.getSourceTeacherEmail() == null ? "" : item.getSourceTeacherEmail());
-                String teacherEmail = item.getSourceTeacherEmail() == null ? "" : item.getSourceTeacherEmail().trim().toLowerCase();
-                User teacherProfile = teacherProfilesByEmail.get(teacherEmail);
-                row.put("sourceTeacherDepartment", teacherProfile == null ? "" : (teacherProfile.getDepartmentName() == null ? "" : teacherProfile.getDepartmentName()));
-                row.put("sourceTeacherProgram", teacherProfile == null ? "" : (teacherProfile.getProgramName() == null ? "" : teacherProfile.getProgramName()));
-                row.put("questionPreview", toPreview(item.getQuestionText()));
-                row.put("questionText", item.getQuestionText() == null ? "" : item.getQuestionText());
-                row.put("createdAt", item.getCreatedAt());
-                return row;
-            })
+        List<EnrolledStudent> allEnrollments = enrolledStudentRepository.findAll();
+        Map<String, Long> studentCountByDepartment = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : teacherEmailsByDepartment.entrySet()) {
+            Set<String> teacherEmailSet = entry.getValue().stream().collect(Collectors.toSet());
+            long studentCount = allEnrollments.stream()
+                .filter(item -> item != null && item.getTeacherEmail() != null && !item.getTeacherEmail().isBlank())
+                .filter(item -> teacherEmailSet.contains(item.getTeacherEmail().trim().toLowerCase()))
+                .map(EnrolledStudent::getStudentEmail)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase())
+                .distinct()
+                .count();
+            studentCountByDepartment.put(entry.getKey(), studentCount);
+        }
+
+        Map<String, Long> teacherCountByDepartment = teacherEmailsByDepartment.entrySet().stream()
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                entry -> (long) entry.getValue().size(),
+                (left, right) -> left,
+                LinkedHashMap::new
+            ));
+
+        List<QuestionBankItem> departmentQuestionBank = questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+            .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), departmentName))
             .toList();
 
-        List<Map<String, Object>> dashboardQuestionPreviewRows = departmentQuestionBankRows.stream()
-            .limit(8)
-            .toList();
+        Map<String, Long> questionCountByDepartment = new LinkedHashMap<>();
+        for (String option : AcademicCatalog.DEPARTMENTS) {
+            questionCountByDepartment.put(option, 0L);
+        }
+
+        for (QuestionBankItem item : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc()) {
+            if (item == null) {
+                continue;
+            }
+
+            String itemDepartment = item.getSourceTeacherDepartment() == null ? "" : item.getSourceTeacherDepartment().trim();
+            if (itemDepartment.isBlank() && item.getSourceTeacherEmail() != null) {
+                User teacher = teacherProfilesByEmail.get(item.getSourceTeacherEmail().trim().toLowerCase());
+                itemDepartment = teacher == null || teacher.getDepartmentName() == null ? "" : teacher.getDepartmentName().trim();
+            }
+
+            if (itemDepartment.isBlank() || !questionCountByDepartment.containsKey(itemDepartment)) {
+                continue;
+            }
+            questionCountByDepartment.put(itemDepartment, questionCountByDepartment.get(itemDepartment) + 1);
+        }
 
         Map<String, Long> subjectCountsByTeacher = departmentSubjects.stream()
             .filter(subject -> subject.getTeacherEmail() != null)
             .collect(Collectors.groupingBy(subject -> subject.getTeacherEmail().trim().toLowerCase(), Collectors.counting()));
 
+        Map<String, Long> studentCountsByTeacher = allEnrollments.stream()
+            .filter(item -> item != null && item.getTeacherEmail() != null && !item.getTeacherEmail().isBlank())
+            .filter(item -> item.getStudentEmail() != null && !item.getStudentEmail().isBlank())
+            .collect(Collectors.groupingBy(
+                item -> item.getTeacherEmail().trim().toLowerCase(),
+                Collectors.mapping(
+                    item -> item.getStudentEmail().trim().toLowerCase(),
+                    Collectors.collectingAndThen(Collectors.toSet(), set -> (long) set.size())
+                )
+            ));
+
+        List<Map<String, Object>> departmentCards = new ArrayList<>();
+        for (String option : AcademicCatalog.DEPARTMENTS) {
+            List<String> departmentPrograms = AcademicCatalog.programsForDepartment(option);
+            Map<String, Object> card = new LinkedHashMap<>();
+            card.put("departmentName", option);
+            card.put("teacherCount", teacherCountByDepartment.getOrDefault(option, 0L));
+            card.put("studentCount", studentCountByDepartment.getOrDefault(option, 0L));
+            card.put("questionCount", questionCountByDepartment.getOrDefault(option, 0L));
+            card.put("programCount", departmentPrograms.size());
+            card.put("programs", departmentPrograms);
+            departmentCards.add(card);
+        }
+
         model.addAttribute("departmentName", departmentName.isBlank() ? "Department not set" : departmentName);
         model.addAttribute("departmentTeacherCount", teacherEmailsInDepartment.size());
         model.addAttribute("departmentSubjectCount", departmentSubjects.size());
         model.addAttribute("departmentQuestionCount", departmentQuestionBank.size());
-        model.addAttribute("departmentQuestionBankRows", dashboardQuestionPreviewRows);
         model.addAttribute("departmentSubjects", departmentSubjects);
         model.addAttribute("teacherProfilesByEmail", teacherProfilesByEmail);
         model.addAttribute("subjectCountsByTeacher", subjectCountsByTeacher);
+        model.addAttribute("studentCountsByTeacher", studentCountsByTeacher);
+        model.addAttribute("departmentCards", departmentCards);
+        model.addAttribute("departmentOptions", AcademicCatalog.DEPARTMENTS);
+        model.addAttribute("programOptionsByDepartment", AcademicCatalog.PROGRAMS_BY_DEPARTMENT);
+        model.addAttribute("currentUserDepartment", departmentName);
         return "department-admin-dashboard";
     }
 
     @PostMapping("/import-students")
     public String importStudents(@RequestParam("studentListFile") MultipartFile studentListFile,
+                                 @RequestParam(name = "teacherEmail", required = false) String teacherEmail,
                                  @RequestParam(name = "departmentName", required = false) String departmentName,
                                  @RequestParam(name = "programName", required = false) String programName,
                                  Principal principal,
@@ -148,31 +214,65 @@ public class DepartmentAdminController {
             return "redirect:/department-admin/dashboard";
         }
 
-        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
-        if (normalizedDepartment.isBlank()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a department.");
-            return "redirect:/department-admin/dashboard";
+        String adminDepartment = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
+        String normalizedTeacherEmail = normalizeEmail(teacherEmail);
+        User selectedTeacher = normalizedTeacherEmail.isBlank()
+            ? null
+            : userRepository.findByEmail(normalizedTeacherEmail).orElse(null);
+
+        String fallbackDepartment = departmentName == null ? "" : departmentName.trim();
+        String redirectDepartment = fallbackDepartment.isBlank() ? adminDepartment : fallbackDepartment;
+        if (selectedTeacher != null && selectedTeacher.getDepartmentName() != null) {
+            redirectDepartment = selectedTeacher.getDepartmentName().trim();
+        }
+        String redirectTarget = buildDepartmentViewRedirect(redirectDepartment);
+
+        if (selectedTeacher == null || selectedTeacher.getRole() != User.Role.TEACHER) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid teacher.");
+            return redirectTarget;
         }
 
-        if (!AcademicCatalog.isValidDepartment(normalizedDepartment)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid department.");
-            return "redirect:/department-admin/dashboard";
+        String teacherDepartment = selectedTeacher.getDepartmentName() == null ? "" : selectedTeacher.getDepartmentName().trim();
+        if (!sameDepartment(teacherDepartment, adminDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You can import students only for teachers in your department.");
+            return redirectTarget;
         }
 
-        String normalizedProgram = programName == null ? "" : programName.trim();
-        if (!AcademicCatalog.isValidProgram(normalizedDepartment, normalizedProgram)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid program for the selected department.");
-            return "redirect:/department-admin/dashboard";
+        if (!AcademicCatalog.isValidDepartment(teacherDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher has invalid department assignment.");
+            return redirectTarget;
         }
+
+        String teacherProgram = selectedTeacher.getProgramName() == null ? "" : selectedTeacher.getProgramName().trim();
+        if (!AcademicCatalog.isValidProgram(teacherDepartment, teacherProgram)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher must have a valid program before importing students.");
+            return redirectTarget;
+        }
+
+        List<Subject> teacherSubjects = subjectRepository.findByTeacherEmail(selectedTeacher.getEmail()).stream()
+            .filter(subject -> subject != null && subject.getId() != null)
+            .sorted(Comparator.comparing(Subject::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
+
+        if (teacherSubjects.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected teacher must have at least one subject to enroll imported students.");
+            return redirectTarget;
+        }
+
+        Subject targetSubject = teacherSubjects.get(0);
+        String normalizedDepartment = teacherDepartment;
+        String normalizedProgram = teacherProgram;
+        String resolvedTeacherEmail = selectedTeacher.getEmail() == null ? normalizedTeacherEmail : selectedTeacher.getEmail().trim();
 
         if (studentListFile == null || studentListFile.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Please upload a CSV file.");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         int rowsRead = 0;
         int createdAccounts = 0;
         int updatedAccounts = 0;
+        int enrolledCount = 0;
         int skippedRows = 0;
         Set<String> seenEmails = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -260,36 +360,200 @@ public class DepartmentAdminController {
                         updatedAccounts++;
                     }
                 }
+
+                if (enrolledStudentRepository.findByTeacherEmailAndStudentEmailAndSubjectId(resolvedTeacherEmail, rawEmail, targetSubject.getId()).isEmpty()) {
+                    String studentName = rawName.isBlank() ? rawEmail : rawName;
+                    EnrolledStudent enrollment = new EnrolledStudent(
+                        resolvedTeacherEmail,
+                        rawEmail,
+                        studentName,
+                        targetSubject.getId(),
+                        targetSubject.getSubjectName()
+                    );
+                    enrolledStudentRepository.save(enrollment);
+                    enrolledCount++;
+                }
             }
         } catch (IOException exception) {
             redirectAttributes.addFlashAttribute("errorMessage", "Unable to read the uploaded CSV file.");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         if (rowsRead == 0) {
             redirectAttributes.addFlashAttribute("errorMessage", "No student rows found. Use CSV format: Full Name,Email,Password(optional).");
-            return "redirect:/department-admin/dashboard";
+            return redirectTarget;
         }
 
         String summary = "Import complete: "
+            + enrolledCount + " enrolled under " + resolvedTeacherEmail + ", "
             + createdAccounts + " account(s) created, "
             + updatedAccounts + " account(s) updated, "
             + skippedRows + " row(s) skipped.";
         redirectAttributes.addFlashAttribute("successMessage", summary);
-        return "redirect:/department-admin/dashboard";
+        return redirectTarget;
+    }
+
+    @PostMapping("/import-teachers")
+    public String importTeachers(@RequestParam("teacherListFile") MultipartFile teacherListFile,
+                                 @RequestParam(name = "departmentName", required = false) String departmentName,
+                                 @RequestParam(name = "programName", required = false) String programName,
+                                 Principal principal,
+                                 RedirectAttributes redirectAttributes) {
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        if (currentAdmin == null || currentAdmin.getRole() != User.Role.DEPARTMENT_ADMIN) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Only Department Admin can import teachers here.");
+            return "redirect:/department-admin/dashboard";
+        }
+
+        String adminDepartment = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        String redirectTarget = buildDepartmentViewRedirect(normalizedDepartment.isBlank() ? adminDepartment : normalizedDepartment);
+
+        if (!sameDepartment(adminDepartment, normalizedDepartment)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "You can import teachers only for your department.");
+            return redirectTarget;
+        }
+
+        if (!AcademicCatalog.isValidProgram(normalizedDepartment, programName == null ? "" : programName.trim())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please select a valid program for the selected department.");
+            return redirectTarget;
+        }
+
+        if (teacherListFile == null || teacherListFile.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Please upload a CSV file.");
+            return redirectTarget;
+        }
+
+        String normalizedProgram = programName == null ? "" : programName.trim();
+        int rowsRead = 0;
+        int createdAccounts = 0;
+        int updatedAccounts = 0;
+        int skippedRows = 0;
+        Set<String> seenEmails = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(teacherListFile.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line == null || line.isBlank()) {
+                    continue;
+                }
+
+                String[] columns = parseCsvRow(line);
+                if (columns.length < 2) {
+                    continue;
+                }
+
+                String rawName = columns[0] == null ? "" : columns[0].trim();
+                String rawEmail = columns[1] == null ? "" : normalizeEmail(columns[1]);
+                String rawPassword = columns.length >= 3 && columns[2] != null ? columns[2].trim() : "";
+
+                if (rowsRead == 0 && "email".equalsIgnoreCase(rawEmail)) {
+                    rowsRead++;
+                    continue;
+                }
+                rowsRead++;
+
+                if (rawEmail.isBlank() || !rawEmail.contains("@") || !seenEmails.add(rawEmail)) {
+                    skippedRows++;
+                    continue;
+                }
+
+                String effectiveName = rawName.isBlank() ? rawEmail : rawName;
+                String effectivePassword = rawPassword.isBlank() ? DEFAULT_IMPORTED_STUDENT_PASSWORD : rawPassword;
+
+                User teacher = userRepository.findByEmail(rawEmail).orElse(null);
+                if (teacher == null) {
+                    teacher = new User();
+                    teacher.setEmail(rawEmail);
+                    teacher.setPassword(passwordEncoder.encode(effectivePassword));
+                    teacher.setFullName(effectiveName);
+                    teacher.setSchoolName(AcademicCatalog.SCHOOL_NAME);
+                    teacher.setCampusName(AcademicCatalog.CAMPUS_NAME);
+                    teacher.setDepartmentName(normalizedDepartment);
+                    teacher.setProgramName(normalizedProgram);
+                    teacher.setRole(User.Role.TEACHER);
+                    teacher.setEnabled(true);
+                    teacher.setVerificationToken(null);
+                    userRepository.save(teacher);
+                    createdAccounts++;
+                } else if (teacher.getRole() != User.Role.TEACHER) {
+                    skippedRows++;
+                    continue;
+                } else {
+                    boolean changed = false;
+                    if (!effectiveName.equals(teacher.getFullName())) {
+                        teacher.setFullName(effectiveName);
+                        changed = true;
+                    }
+                    if (!AcademicCatalog.SCHOOL_NAME.equals(teacher.getSchoolName())) {
+                        teacher.setSchoolName(AcademicCatalog.SCHOOL_NAME);
+                        changed = true;
+                    }
+                    if (!AcademicCatalog.CAMPUS_NAME.equals(teacher.getCampusName())) {
+                        teacher.setCampusName(AcademicCatalog.CAMPUS_NAME);
+                        changed = true;
+                    }
+                    if (!normalizedDepartment.equals(teacher.getDepartmentName())) {
+                        teacher.setDepartmentName(normalizedDepartment);
+                        changed = true;
+                    }
+                    if (!normalizedProgram.equals(teacher.getProgramName() == null ? "" : teacher.getProgramName())) {
+                        teacher.setProgramName(normalizedProgram);
+                        changed = true;
+                    }
+                    if (!teacher.isEnabled()) {
+                        teacher.setEnabled(true);
+                        changed = true;
+                    }
+                    if (!rawPassword.isBlank()) {
+                        teacher.setPassword(passwordEncoder.encode(rawPassword));
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        userRepository.save(teacher);
+                        updatedAccounts++;
+                    }
+                }
+            }
+        } catch (IOException exception) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to read the uploaded CSV file.");
+            return redirectTarget;
+        }
+
+        if (rowsRead == 0) {
+            redirectAttributes.addFlashAttribute("errorMessage", "No teacher rows found. Use CSV format: Full Name,Email,Password(optional).");
+            return redirectTarget;
+        }
+
+        String summary = "Teacher import complete: "
+            + createdAccounts + " account(s) created, "
+            + updatedAccounts + " account(s) updated, "
+            + skippedRows + " row(s) skipped.";
+        redirectAttributes.addFlashAttribute("successMessage", summary);
+        return redirectTarget;
     }
 
     @GetMapping("/question-bank")
     public String questionBank(@RequestParam(name = "search", required = false) String search,
                                @RequestParam(name = "departmentName", required = false) String departmentName,
+                               @RequestParam(name = "subject", required = false) String subject,
                                @RequestParam(name = "page", defaultValue = "0") int page,
                                @RequestParam(name = "size", defaultValue = "15") int size,
                                Model model,
                                Principal principal) {
-        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
-        final String selectedDepartment = (!normalizedDepartment.isBlank() && AcademicCatalog.isValidDepartment(normalizedDepartment))
-            ? normalizedDepartment
-            : "";
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        String adminDepartment = currentAdmin == null || currentAdmin.getDepartmentName() == null
+            ? ""
+            : currentAdmin.getDepartmentName().trim();
+
+        String requestedDepartment = departmentName == null ? "" : departmentName.trim();
+        final String selectedDepartment = AcademicCatalog.isValidDepartment(requestedDepartment)
+            ? requestedDepartment
+            : (AcademicCatalog.isValidDepartment(adminDepartment) ? adminDepartment : "");
+        final String selectedSubject = subject == null ? "" : subject.trim();
 
         List<String> teacherEmailsInDepartment = userRepository.findAll().stream()
             .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
@@ -310,12 +574,10 @@ public class DepartmentAdminController {
         }
 
         String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
-        List<Map<String, Object>> allRows = teacherEmailsInDepartment.isEmpty()
+        List<Map<String, Object>> allRows = selectedDepartment.isBlank()
             ? new ArrayList<>()
             : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
-                .filter(item -> item.getSourceTeacherEmail() != null)
-                .filter(item -> teacherEmailsInDepartment.stream()
-                    .anyMatch(email -> email.equalsIgnoreCase(item.getSourceTeacherEmail().trim())))
+                .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), selectedDepartment))
                 .map(item -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("id", item.getId());
@@ -325,8 +587,11 @@ public class DepartmentAdminController {
                     row.put("sourceTeacherEmail", item.getSourceTeacherEmail() == null ? "" : item.getSourceTeacherEmail());
                     String teacherEmail = item.getSourceTeacherEmail() == null ? "" : item.getSourceTeacherEmail().trim().toLowerCase();
                     User teacherProfile = teacherProfilesByEmail.get(teacherEmail);
-                    row.put("sourceTeacherDepartment", teacherProfile == null ? "" : (teacherProfile.getDepartmentName() == null ? "" : teacherProfile.getDepartmentName()));
-                    row.put("sourceTeacherProgram", teacherProfile == null ? "" : (teacherProfile.getProgramName() == null ? "" : teacherProfile.getProgramName()));
+                    String itemDepartment = resolveItemDepartment(item, teacherProfilesByEmail);
+                    String rawProgram = teacherProfile == null ? "" : (teacherProfile.getProgramName() == null ? "" : teacherProfile.getProgramName().trim());
+                    String resolvedProgram = AcademicCatalog.isValidProgram(itemDepartment, rawProgram) ? rawProgram : "";
+                    row.put("sourceTeacherDepartment", itemDepartment);
+                    row.put("sourceTeacherProgram", resolvedProgram);
                     row.put("questionPreview", toPreview(item.getQuestionText()));
                     row.put("questionText", item.getQuestionText() == null ? "" : item.getQuestionText());
                     row.put("createdAt", item.getCreatedAt());
@@ -339,6 +604,7 @@ public class DepartmentAdminController {
                         || String.valueOf(row.getOrDefault("sourceTeacherEmail", "")).toLowerCase().contains(normalizedSearch)
                         || String.valueOf(row.getOrDefault("sourceExamName", "")).toLowerCase().contains(normalizedSearch)
                 ))
+                .filter(row -> selectedSubject.isBlank() || selectedSubject.equalsIgnoreCase(String.valueOf(row.getOrDefault("subject", "")).trim()))
                 .toList();
 
         int safeSize = Math.max(5, Math.min(size, 50));
@@ -349,8 +615,9 @@ public class DepartmentAdminController {
         int to = Math.min(from + safeSize, total);
         List<Map<String, Object>> pagedRows = from < to ? allRows.subList(from, to) : new ArrayList<>();
 
-        model.addAttribute("departmentName", selectedDepartment.isBlank() ? "All departments" : selectedDepartment);
+        model.addAttribute("departmentName", selectedDepartment.isBlank() ? "Department not set" : selectedDepartment);
         model.addAttribute("selectedDepartment", selectedDepartment);
+        model.addAttribute("selectedSubject", selectedSubject);
         model.addAttribute("questionBankRows", pagedRows);
         model.addAttribute("search", search == null ? "" : search);
         model.addAttribute("page", safePage);
@@ -360,6 +627,150 @@ public class DepartmentAdminController {
         model.addAttribute("hasPrev", safePage > 0);
         model.addAttribute("hasNext", safePage + 1 < totalPages);
         return "department-admin-question-bank";
+    }
+
+    @GetMapping("/department-view")
+    public String departmentView(@RequestParam(name = "departmentName", required = false) String departmentName,
+                                 Model model,
+                                 Principal principal) {
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        if (currentAdmin == null || currentAdmin.getRole() != User.Role.DEPARTMENT_ADMIN) {
+            return "redirect:/login";
+        }
+
+        String adminDepartment = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
+        String requestedDepartment = departmentName == null ? "" : departmentName.trim();
+        String selectedDepartment = AcademicCatalog.isValidDepartment(requestedDepartment)
+            ? requestedDepartment
+            : adminDepartment;
+
+        List<User> teachersInDepartment = userRepository.findAll().stream()
+            .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
+            .filter(user -> sameDepartment(user.getDepartmentName(), selectedDepartment))
+            .sorted(Comparator.comparing(
+                user -> user.getFullName() == null || user.getFullName().isBlank() ? user.getEmail() : user.getFullName(),
+                String.CASE_INSENSITIVE_ORDER
+            ))
+            .toList();
+
+        Set<String> teacherEmailSet = teachersInDepartment.stream()
+            .map(User::getEmail)
+            .filter(email -> email != null && !email.isBlank())
+            .map(this::normalizeEmail)
+            .collect(Collectors.toSet());
+
+        List<Subject> subjectsInDepartment = teacherEmailSet.isEmpty()
+            ? new ArrayList<>()
+            : subjectRepository.findAll().stream()
+                .filter(subject -> subject != null && subject.getTeacherEmail() != null)
+                .filter(subject -> teacherEmailSet.contains(normalizeEmail(subject.getTeacherEmail())))
+                .toList();
+
+        Map<String, Long> subjectCountsByTeacher = subjectsInDepartment.stream()
+            .filter(subject -> subject.getTeacherEmail() != null)
+            .collect(Collectors.groupingBy(
+                subject -> normalizeEmail(subject.getTeacherEmail()),
+                Collectors.counting()
+            ));
+
+        List<EnrolledStudent> enrollmentsInDepartment = teacherEmailSet.isEmpty()
+            ? new ArrayList<>()
+            : enrolledStudentRepository.findAll().stream()
+                .filter(enrollment -> enrollment != null && enrollment.getTeacherEmail() != null)
+                .filter(enrollment -> teacherEmailSet.contains(normalizeEmail(enrollment.getTeacherEmail())))
+                .toList();
+
+        Map<String, User> studentProfilesByEmail = userRepository.findAll().stream()
+            .filter(user -> user != null && user.getRole() == User.Role.STUDENT)
+            .filter(user -> user.getEmail() != null && !user.getEmail().isBlank())
+            .collect(Collectors.toMap(
+                user -> normalizeEmail(user.getEmail()),
+                user -> user,
+                (left, right) -> left
+            ));
+
+        Map<String, List<EnrolledStudent>> enrollmentsByTeacher = enrollmentsInDepartment.stream()
+            .collect(Collectors.groupingBy(
+                enrollment -> normalizeEmail(enrollment.getTeacherEmail()),
+                LinkedHashMap::new,
+                Collectors.toList()
+            ));
+
+        List<Map<String, Object>> teacherRows = new ArrayList<>();
+        for (User teacher : teachersInDepartment) {
+            String teacherEmailKey = normalizeEmail(teacher.getEmail());
+            List<EnrolledStudent> teacherEnrollments = enrollmentsByTeacher.getOrDefault(teacherEmailKey, new ArrayList<>());
+
+            List<Map<String, Object>> studentRows = teacherEnrollments.stream()
+                .sorted(Comparator.comparing(
+                    enrollment -> enrollment.getStudentName() == null ? "" : enrollment.getStudentName(),
+                    String.CASE_INSENSITIVE_ORDER
+                ))
+                .map(enrollment -> {
+                    Map<String, Object> studentRow = new LinkedHashMap<>();
+                    String studentEmail = enrollment.getStudentEmail() == null ? "" : enrollment.getStudentEmail().trim();
+                    User studentProfile = studentProfilesByEmail.get(normalizeEmail(studentEmail));
+                    String profileName = studentProfile == null ? "" : (studentProfile.getFullName() == null ? "" : studentProfile.getFullName().trim());
+                    String profileProgram = studentProfile == null ? "" : (studentProfile.getProgramName() == null ? "" : studentProfile.getProgramName().trim());
+
+                    studentRow.put("studentName", !profileName.isBlank() ? profileName : enrollment.getStudentName());
+                    studentRow.put("studentEmail", studentEmail);
+                    studentRow.put("programName", profileProgram.isBlank() ? "-" : profileProgram);
+                    studentRow.put("subjectName", enrollment.getSubjectName() == null || enrollment.getSubjectName().isBlank()
+                        ? "-"
+                        : enrollment.getSubjectName().trim());
+                    studentRow.put("enrolledAt", enrollment.getEnrolledAt());
+                    return studentRow;
+                })
+                .toList();
+
+            long uniqueStudentCount = teacherEnrollments.stream()
+                .map(EnrolledStudent::getStudentEmail)
+                .filter(email -> email != null && !email.isBlank())
+                .map(this::normalizeEmail)
+                .distinct()
+                .count();
+
+            Map<String, Object> teacherRow = new LinkedHashMap<>();
+            teacherRow.put("teacher", teacher);
+            teacherRow.put("subjectCount", subjectCountsByTeacher.getOrDefault(teacherEmailKey, 0L));
+            teacherRow.put("studentCount", uniqueStudentCount);
+            teacherRow.put("studentRows", studentRows);
+            teacherRows.add(teacherRow);
+        }
+
+        long totalUniqueStudents = enrollmentsInDepartment.stream()
+            .map(EnrolledStudent::getStudentEmail)
+            .filter(email -> email != null && !email.isBlank())
+            .map(this::normalizeEmail)
+            .distinct()
+            .count();
+
+        long departmentQuestionCount = questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+            .filter(item -> sameDepartment(resolveItemDepartment(item, teachersInDepartment.stream().collect(Collectors.toMap(
+                teacher -> normalizeEmail(teacher.getEmail()),
+                teacher -> teacher,
+                (left, right) -> left,
+                HashMap::new
+            ))), selectedDepartment))
+            .count();
+
+        model.addAttribute("selectedDepartment", selectedDepartment);
+        model.addAttribute("teacherOptions", teachersInDepartment);
+        model.addAttribute("teacherProgramByEmail", teachersInDepartment.stream().collect(Collectors.toMap(
+            teacher -> normalizeEmail(teacher.getEmail()),
+            teacher -> teacher.getProgramName() == null ? "" : teacher.getProgramName().trim(),
+            (left, right) -> left,
+            LinkedHashMap::new
+        )));
+        model.addAttribute("programOptionsByDepartment", AcademicCatalog.PROGRAMS_BY_DEPARTMENT);
+        model.addAttribute("teacherRows", teacherRows);
+        model.addAttribute("teacherCount", teachersInDepartment.size());
+        model.addAttribute("subjectCount", subjectsInDepartment.size());
+        model.addAttribute("studentCount", totalUniqueStudents);
+        model.addAttribute("departmentQuestionCount", departmentQuestionCount);
+        return "department-admin-department-view";
     }
 
     private String toPreview(String questionText) {
@@ -374,6 +785,51 @@ public class DepartmentAdminController {
             return flattened;
         }
         return flattened.substring(0, 137) + "...";
+    }
+
+    private String resolveItemDepartment(QuestionBankItem item, Map<String, User> teacherProfilesByEmail) {
+        if (item == null) {
+            return "";
+        }
+
+        String department = item.getSourceTeacherDepartment() == null ? "" : item.getSourceTeacherDepartment().trim();
+        if (!department.isBlank()) {
+            return department;
+        }
+
+        if (item.getSourceTeacherEmail() == null || item.getSourceTeacherEmail().isBlank()) {
+            return "";
+        }
+
+        User teacherProfile = teacherProfilesByEmail.get(item.getSourceTeacherEmail().trim().toLowerCase());
+        if (teacherProfile == null || teacherProfile.getDepartmentName() == null) {
+            return "";
+        }
+
+        return teacherProfile.getDepartmentName().trim();
+    }
+
+    private boolean sameDepartment(String left, String right) {
+        String leftValue = left == null ? "" : left.trim();
+        String rightValue = right == null ? "" : right.trim();
+        if (leftValue.isBlank() || rightValue.isBlank()) {
+            return false;
+        }
+        return leftValue.equalsIgnoreCase(rightValue);
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private String buildDepartmentViewRedirect(String departmentName) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return "redirect:/department-admin/department-view";
+        }
+
+        return "redirect:/department-admin/department-view?departmentName="
+            + java.net.URLEncoder.encode(normalizedDepartment, StandardCharsets.UTF_8);
     }
 
     private String[] parseCsvRow(String line) {
