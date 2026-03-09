@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Questions - ALGO</title>
+        <link rel="icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png">
+    <link rel="shortcut icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png"><title>Manage Questions - ALGO</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" th:href="@{/css/style.css}">
@@ -561,15 +562,15 @@
                             <div class="mq-help mt-2">
                                 <div>For multiple choice questions, include all options (A, B, C, D, etc.) in the question text.</div>
                                 <div class="mt-1"><strong>Supported formats</strong></div>
-                                <div>• Images: <code>&lt;img src="URL" alt="description"&gt;</code></div>
-                                <div>• Videos: <code>&lt;video src="URL" controls&gt;&lt;/video&gt;</code></div>
-                                <div>• Or upload media using the file pickers below</div>
-                                <div>• Equations (inline): <code>$x^2 + y^2 = r^2$</code> or <code>\(x^2\)</code></div>
-                                <div>• Equations (block): <code>$$\frac{a}{b}$$</code> or <code>\[\int_0^\infty\]</code></div>
+                                <div>â€¢ Images: <code>&lt;img src="URL" alt="description"&gt;</code></div>
+                                <div>â€¢ Videos: <code>&lt;video src="URL" controls&gt;&lt;/video&gt;</code></div>
+                                <div>â€¢ Or upload media using the file pickers below</div>
+                                <div>â€¢ Equations (inline): <code>$x^2 + y^2 = r^2$</code> or <code>\(x^2\)</code></div>
+                                <div>â€¢ Equations (block): <code>$$\frac{a}{b}$$</code> or <code>\[\int_0^\infty\]</code></div>
                             </div>
                             <!-- Live LaTeX preview -->
                             <div id="mathPreviewContainer" class="mt-2 p-3 rounded">
-                                <small class="d-block mb-1 text-muted" style="font-size:.75rem;">⟨ LaTeX Preview ⟩</small>
+                                <small class="d-block mb-1 text-muted" style="font-size:.75rem;">âŸ¨ LaTeX Preview âŸ©</small>
                                 <div id="mathPreview"></div>
                             </div>
                         </div>
@@ -633,9 +634,9 @@
                                 <label class="form-label fw-bold">Difficulty Level *</label>
                                 <select class="form-select" name="difficulty" required>
                                     <option value="">Select Difficulty</option>
-                                    <option value="Easy">🟢 Easy</option>
-                                    <option value="Medium">🟡 Medium</option>
-                                    <option value="Hard">🔴 Hard</option>
+                                    <option value="Easy">ðŸŸ¢ Easy</option>
+                                    <option value="Medium">ðŸŸ¡ Medium</option>
+                                    <option value="Hard">ðŸ”´ Hard</option>
                                 </select>
                             </div>
                         </div>
@@ -668,7 +669,7 @@
                     <h5 class="mb-0"><i class="bi bi-list-ol"></i> All Questions</h5>
                     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                         <input type="text" id="manageQuestionSearch" class="form-control form-control-sm mq-search-input"
-                               placeholder="🔎 Search question or answer...">
+                               placeholder="ðŸ”Ž Search question or answer...">
                         <span class="badge bg-light text-dark" th:text="${#lists.size(exam.questions)} + ' Questions'">100 Questions</span>
                     </div>
                 </div>
@@ -1805,3 +1806,4 @@
 
 </body>
 </html>
+

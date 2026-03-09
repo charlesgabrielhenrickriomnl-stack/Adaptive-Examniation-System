@@ -1,8 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Exam Results - ALGO</title>
+        <link rel="icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png">
+    <link rel="shortcut icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png"><title>Exam Results - ALGO</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link th:href="@{/css/student-results.css}" rel="stylesheet">
@@ -113,7 +114,7 @@
                                                   analytics.performanceCategory == 'Fair' ? 'bg-warning' : 'bg-danger'}"
                                   th:text="${analytics.performanceCategory}"></span>
                             <button id="renderRadarBtn" class="btn analytics-chart-btn" type="button">
-                                📊 View Detailed Performance Chart
+                                ðŸ“Š View Detailed Performance Chart
                             </button>
                             <button id="toggleChartBtn" class="btn btn-outline-secondary analytics-back-btn d-none" type="button">
                                 <i class="bi bi-arrow-left me-1"></i>Back
