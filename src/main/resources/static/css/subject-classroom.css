@@ -386,18 +386,117 @@
 #distributionStudentsTable td:last-child .d-flex > a.btn,
 #distributionStudentsTable td:last-child .d-flex > form .btn,
 #distributionStudentsTable td:last-child .d-flex > button.btn {
-    width: auto;
+    width: 122px;
     min-width: 122px;
+    max-width: 122px;
+    min-height: 36px;
+    padding: 0.4rem 0.62rem;
     justify-content: center;
     display: inline-flex;
     align-items: center;
+    gap: 0.2rem;
     text-align: center;
     white-space: nowrap;
 }
 
 #distributionStudentsTable td:last-child .d-flex > form {
-    display: inline-block;
+    display: inline-flex;
     margin: 0;
+}
+
+#distributionStudentsTable td:last-child .d-flex > a.btn i,
+#distributionStudentsTable td:last-child .d-flex > form .btn i,
+#distributionStudentsTable td:last-child .d-flex > button.btn i {
+    font-size: 0.9rem;
+}
+
+#distributionStudentsTable .distribution-grade-btn {
+    border: 1px solid #d79f12;
+    background: linear-gradient(135deg, #ffd35a 0%, #f4b90c 100%);
+    color: #4b3300;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(145, 101, 4, 0.22);
+}
+
+#distributionStudentsTable .distribution-paper-btn {
+    border: 1px solid #3e78de;
+    background: linear-gradient(135deg, #f7fbff 0%, #e5f0ff 100%);
+    color: #2458b5;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(37, 92, 186, 0.14);
+}
+
+#distributionStudentsTable .distribution-release-btn {
+    border-width: 1px;
+    font-weight: 700;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+}
+
+#distributionStudentsTable .distribution-release-btn.is-hidden {
+    border-color: #57a489;
+    background: linear-gradient(135deg, #f5fbf8 0%, #e8f6ef 100%);
+    color: #2b7e61;
+    box-shadow: 0 2px 8px rgba(39, 130, 99, 0.14);
+}
+
+#distributionStudentsTable .distribution-release-btn.is-released {
+    border-color: #8a98a6;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef1f4 100%);
+    color: #5c6772;
+    box-shadow: 0 2px 8px rgba(72, 83, 94, 0.12);
+}
+
+#distributionStudentsTable .distribution-release-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+#distributionStudentsTable .distribution-paper-btn:hover,
+#distributionStudentsTable .distribution-paper-btn:focus {
+    border-color: #2e63c5;
+    background: linear-gradient(135deg, #eef6ff 0%, #d8e9ff 100%);
+    color: #18479a;
+    transform: translateY(-1px);
+}
+
+#distributionStudentsTable .distribution-grade-btn:hover,
+#distributionStudentsTable .distribution-grade-btn:focus {
+    border-color: #c28c09;
+    background: linear-gradient(135deg, #ffcc43 0%, #e6aa06 100%);
+    color: #362400;
+    transform: translateY(-1px);
+}
+
+#distributionStudentsTable .distribution-grade-btn:active {
+    transform: translateY(0);
+}
+
+#distributionStudentsTable .distribution-release-btn:not(:disabled):hover,
+#distributionStudentsTable .distribution-release-btn:not(:disabled):focus {
+    transform: translateY(-1px);
+}
+
+#distributionStudentsTable .distribution-retake-btn {
+    border: 1px solid #d79f12;
+    background: linear-gradient(135deg, #fff9ea 0%, #fff2cf 100%);
+    color: #b07c07;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(145, 101, 4, 0.14);
+}
+
+#distributionStudentsTable .distribution-retake-btn:hover,
+#distributionStudentsTable .distribution-retake-btn:focus {
+    border-color: #c28c09;
+    background: linear-gradient(135deg, #fff4d6 0%, #ffe9b0 100%);
+    color: #976806;
+    transform: translateY(-1px);
+}
+
+#distributionStudentsTable .distribution-paper-btn:active,
+#distributionStudentsTable .distribution-release-btn:active,
+#distributionStudentsTable .distribution-retake-btn:active {
+    transform: translateY(0);
 }
 
 #distributedExamsTable td:last-child .d-inline-flex {

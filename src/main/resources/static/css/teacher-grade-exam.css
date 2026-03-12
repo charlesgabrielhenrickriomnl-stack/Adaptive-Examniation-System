@@ -1,102 +1,419 @@
-.section-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #7a1022;
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-            padding-bottom: 0.6rem;
-            border-bottom: 1px solid #eadfce;
-            margin-bottom: 1rem;
-        }
-        .info-table td {
-            padding: 0.55rem 0.7rem;
-            border-bottom: 1px solid #f0ebe2;
-            vertical-align: middle;
-            font-size: 0.9rem;
-        }
-        .info-table tr:last-child td { border-bottom: none; }
-        .info-table td:first-child {
-            font-weight: 600;
-            color: #4c2a11;
-            width: 42%;
-            white-space: nowrap;
-        }
-        .question-card {
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            padding: 1rem 1.1rem;
-            margin-bottom: 0.85rem;
-            transition: box-shadow 0.2s;
-        }
-        .question-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.07);
-        }
-        .question-card.correct {
-            border-left: 4px solid #267a4b;
-            background: #f3faf6;
-        }
-        .question-card.incorrect {
-            border-left: 4px solid #b02a37;
-            background: #fdf4f5;
-        }
-        .question-card.needs-grading {
-            border-left: 4px solid #c28812;
-            background: #fffdf4;
-        }
-        .answer-box {
-            padding: 0.65rem 0.85rem;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        .answer-box.student {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-left: 3px solid #6c757d;
-        }
-        .answer-box.expected {
-            background: #f0f7ff;
-            border: 1px solid #cce0f5;
-            border-left: 3px solid #3557c7;
-        }
-        .score-preview-box {
-            background: #faf8f4;
-            border: 1px solid #eadfce;
-            border-radius: 10px;
-            padding: 1rem 1.2rem;
-        }
-        .score-preview-box .preview-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.3rem 0;
-            font-size: 0.9rem;
-            color: #4c2a11;
-        }
-        .score-preview-box .preview-row.final {
-            border-top: 1px solid #eadfce;
-            margin-top: 0.4rem;
-            padding-top: 0.55rem;
-            font-weight: 700;
-            font-size: 1rem;
-            color: #7a1022;
-        }
-        .finalize-btn {
-            background: linear-gradient(135deg, #267a4b 0%, #1d5c38 100%);
-            border: none;
-            color: #fff;
-            font-weight: 700;
-            font-size: 1rem;
-            padding: 0.75rem 1.5rem;
-            border-radius: 10px;
-            width: 100%;
-        }
-        .finalize-btn:hover {
-            background: linear-gradient(135deg, #1d5c38 0%, #174d2e 100%);
-            color: #fff;
-        }
-        .manual-question-input {
-            max-width: 220px;
-        }
+.teacher-grade-page .grade-shell {
+    max-width: 1060px;
+    margin: 0 auto;
+}
+
+/* Override global teacher-wide rule that forces container-fluid to full width. */
+.teacher-wide-page.teacher-grade-page .teacher-content-wrapper > .container-fluid.grade-shell {
+    max-width: 1060px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+}
+
+.teacher-grade-page .results-card {
+    border: 1px solid #e4d8c6;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(251, 246, 237, 0.96));
+    box-shadow: 0 10px 22px rgba(63, 41, 18, 0.08);
+    padding: 1.25rem;
+}
+
+.teacher-grade-page .grade-header-card {
+    background: linear-gradient(120deg, #fffdf8 0%, #f6eddf 70%, #efe2d0 100%);
+}
+
+.teacher-grade-page .grade-header-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.teacher-grade-page .grade-title {
+    color: #7a1022;
+    font-size: clamp(1.25rem, 1rem + 0.8vw, 1.7rem);
+    letter-spacing: 0.01em;
+}
+
+.teacher-grade-page .grade-subtitle {
+    color: #6e6a62;
+    font-size: 0.92rem;
+}
+
+.teacher-grade-page .grade-header-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+    color: #6b665d;
+    font-size: 0.78rem;
+}
+
+.teacher-grade-page .status-pill {
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+}
+
+.teacher-grade-page .status-pill.graded {
+    background: #e7f6ec;
+    color: #1f6e42;
+    border-color: #bfe4cb;
+}
+
+.teacher-grade-page .status-pill.pending {
+    background: #fff8e6;
+    color: #8a5a07;
+    border-color: #f0d8a0;
+}
+
+.teacher-grade-page .overview-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.teacher-grade-page .meta-item {
+    background: #fff;
+    border: 1px solid #eadfce;
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+}
+
+.teacher-grade-page .meta-item span {
+    display: block;
+    font-size: 0.72rem;
+    color: #7a7469;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+}
+
+.teacher-grade-page .meta-item strong {
+    color: #3f2f21;
+    font-size: 0.88rem;
+    word-break: break-word;
+}
+
+.teacher-grade-page .overview-score-strip {
+    margin-top: 0.9rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.teacher-grade-page .score-chip {
+    border-radius: 14px;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.teacher-grade-page .score-chip small {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    opacity: 0.9;
+}
+
+.teacher-grade-page .score-chip strong {
+    font-size: 1.05rem;
+}
+
+.teacher-grade-page .score-chip.auto {
+    background: #f4f8ff;
+    color: #2b4e95;
+}
+
+.teacher-grade-page .score-chip.manual {
+    background: #fff9ec;
+    color: #8a5a07;
+}
+
+.teacher-grade-page .score-chip.total {
+    background: #f3faf6;
+    color: #1f6e42;
+}
+
+.teacher-grade-page .section-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #7a1022;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid #eadfce;
+}
+
+.teacher-grade-page .grade-empty-state {
+    border: 1px dashed #d9ccb8;
+    border-radius: 12px;
+    padding: 1.4rem 1rem;
+    text-align: center;
+    color: #7a7469;
+}
+
+.teacher-grade-page .grade-empty-state i {
+    font-size: 1.6rem;
+    display: block;
+    margin-bottom: 0.4rem;
+}
+
+.teacher-grade-page .question-card {
+    border: 1px solid #e8ddcf;
+    border-radius: 14px;
+    padding: 1rem;
+    margin-bottom: 0.9rem;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.teacher-grade-page .question-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(59, 37, 16, 0.08);
+}
+
+.teacher-grade-page .question-card.correct {
+    border-left: 4px solid #267a4b;
+    background: #f3faf6;
+}
+
+.teacher-grade-page .question-card.incorrect {
+    border-left: 4px solid #b02a37;
+    background: #fdf4f5;
+}
+
+.teacher-grade-page .question-card.needs-grading {
+    border-left: 4px solid #c28812;
+    background: #fffdf4;
+}
+
+.teacher-grade-page .question-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.teacher-grade-page .question-no {
+    font-size: 0.82rem;
+    color: #5a554e;
+    font-weight: 700;
+}
+
+.teacher-grade-page .question-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.teacher-grade-page .answer-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #635d56;
+    margin-bottom: 0.35rem;
+}
+
+.teacher-grade-page .answer-box {
+    padding: 0.72rem 0.82rem;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-height: 64px;
+}
+
+.teacher-grade-page .answer-box.student {
+    background: #fff;
+    border: 1px solid #e1d5c4;
+    border-left: 3px solid #7a746d;
+}
+
+.teacher-grade-page .answer-box.expected {
+    background: #f1f6ff;
+    border: 1px solid #cddcf8;
+    border-left: 3px solid #3557c7;
+}
+
+.teacher-grade-page .manual-grade-panel {
+    border: 1px solid #f0dda8;
+    background: #fffbef;
+    border-radius: 10px;
+    padding: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.teacher-grade-page .manual-grade-copy {
+    color: #7a5c00;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.teacher-grade-page .manual-question-input {
+    max-width: 120px;
+}
+
+.teacher-grade-page .grade-finalize-card {
+    position: sticky;
+    top: 84px;
+}
+
+.teacher-grade-page .manual-score-box {
+    border-radius: 12px;
+    background: linear-gradient(135deg, #7a1022 0%, #5f0d1a 100%);
+    color: #fff;
+    padding: 0.8rem 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.8rem;
+}
+
+.teacher-grade-page .manual-score-box small {
+    display: block;
+    font-size: 0.72rem;
+    opacity: 0.88;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.teacher-grade-page .manual-score-box #manualScoreDisplay {
+    font-size: 1.7rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.teacher-grade-page .manual-score-box .manual-cap {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    padding: 0.25rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.teacher-grade-page .score-preview-box {
+    background: #faf8f4;
+    border: 1px solid #eadfce;
+    border-radius: 12px;
+    padding: 0.95rem;
+}
+
+.teacher-grade-page .score-preview-box .preview-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.34rem 0;
+    font-size: 0.9rem;
+    color: #4c2a11;
+}
+
+.teacher-grade-page .score-preview-box .preview-row.final {
+    border-top: 1px solid #e0d4c0;
+    margin-top: 0.3rem;
+    padding-top: 0.55rem;
+    font-weight: 800;
+    color: #7a1022;
+}
+
+.teacher-grade-page .release-choice-wrap {
+    border: 1px solid #eadfce;
+    background: #fff;
+    border-radius: 12px;
+    padding: 0.75rem;
+}
+
+.teacher-grade-page .release-choice-item {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    border: 1px solid #ede3d4;
+    border-radius: 10px;
+    padding: 0.6rem;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+}
+
+.teacher-grade-page .release-choice-item:last-child {
+    margin-bottom: 0;
+}
+
+.teacher-grade-page .release-choice-item strong {
+    display: block;
+    font-size: 0.86rem;
+    color: #4b2d16;
+}
+
+.teacher-grade-page .release-choice-item small {
+    display: block;
+    color: #746d62;
+    font-size: 0.75rem;
+}
+
+.teacher-grade-page .finalize-btn {
+    background: linear-gradient(135deg, #267a4b 0%, #1d5c38 100%);
+    border: none;
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.98rem;
+    padding: 0.78rem 1.2rem;
+    border-radius: 12px;
+    width: 100%;
+}
+
+.teacher-grade-page .finalize-btn:hover {
+    background: linear-gradient(135deg, #1d5c38 0%, #174d2e 100%);
+    color: #fff;
+}
+
+@media (max-width: 1199px) {
+    .teacher-grade-page .grade-finalize-card {
+        position: static;
+    }
+
+    .teacher-wide-page.teacher-grade-page .teacher-content-wrapper > .container-fluid.grade-shell {
+        max-width: 100%;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .teacher-grade-page .overview-meta-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .teacher-grade-page .overview-score-strip {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 576px) {
+    .teacher-grade-page .results-card {
+        padding: 0.95rem;
+    }
+
+    .teacher-grade-page .overview-meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .teacher-grade-page .manual-grade-panel {
+        align-items: stretch;
+    }
+}

@@ -227,15 +227,16 @@ body.login-page::after {
 
 .login-page-president-image {
     position: absolute;
-    right: -72px;
-    bottom: -8px;
-    width: min(58%, 520px);
+    right: 26px;
+    bottom: -12px;
+    width: min(41%, 330px);
+    max-height: 88%;
     height: auto;
     object-fit: contain;
     object-position: right bottom;
     display: block;
     z-index: 2;
-    transform: translateX(10%);
+    transform: translateX(0);
     transform-origin: right bottom;
     filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.22));
 }

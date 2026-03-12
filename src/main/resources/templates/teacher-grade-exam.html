@@ -10,241 +10,213 @@
     <link th:href="@{/css/style.css}" rel="stylesheet">
         <link rel="stylesheet" th:href="@{/css/teacher-grade-exam.css}">
 </head>
-<body class="teacher-wide-page">
+<body class="teacher-wide-page teacher-grade-page">
 <div class="teacher-layout">
     <div th:replace="~{teacher-nav :: teacherNav}"></div>
 
     <div class="teacher-content-wrapper">
-        <div class="container-fluid py-4">
+        <div class="container-fluid py-4 grade-shell">
 
-            <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
-                <div>
-                    <a th:href="@{/teacher/view-result/{id}(id=${submission.id})}"
-                       class="btn btn-sm btn-outline-secondary mb-2">
-                        <i class="bi bi-arrow-left"></i> Back
-                    </a>
-                    <h4 class="mb-0 fw-bold" style="color:#7a1022;">
-                        <i class="bi bi-clipboard-check me-2"></i>Grade Submission
-                    </h4>
-                    <p class="text-muted small mb-0">Review student answers and assign manual score.</p>
-                </div>
-            </div>
-
-            <div class="results-card p-4 mb-4">
-                <div class="row g-4">
-                    <div class="col-md-6">
-                        <div class="section-title">
-                            <i class="bi bi-person-badge"></i> Student Information
-                        </div>
-                        <table class="info-table w-100">
-                            <tr>
-                                <td>Email</td>
-                                <td th:text="${submission.studentEmail}"></td>
-                            </tr>
-                            <tr>
-                                <td>Exam</td>
-                                <td th:text="${submission.examName}"></td>
-                            </tr>
-                            <tr>
-                                <td>Submitted</td>
-                                <td th:text="${#temporals.format(submission.submittedAt, 'MMM dd, yyyy HH:mm')}"></td>
-                            </tr>
-                        </table>
+            <div class="results-card grade-header-card mb-4">
+                <div class="grade-header-main">
+                    <div>
+                        <a th:href="${returnTo}"
+                           class="btn btn-sm btn-outline-secondary mb-2 grade-back-btn">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                        <h4 class="mb-1 fw-bold grade-title">
+                            <i class="bi bi-clipboard-check me-2"></i>Grade Submission
+                        </h4>
+                        <p class="grade-subtitle mb-0">Review answers, score open-ended items, and finalize the result.</p>
                     </div>
-                    <div class="col-md-6">
-                        <div class="section-title">
-                            <i class="bi bi-graph-up"></i> Scoring Summary
-                        </div>
-                        <table class="info-table w-100">
-                            <tr>
-                                <td>Auto-Graded Score</td>
-                                <td>
-                                    <span class="badge" style="background:#4c2a11;"
-                                          th:text="${submission.score + ' / ' + submission.totalQuestions}"></span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Current Manual Score</td>
-                                <td>
-                                    <span class="badge" style="background:#3557c7;"
-                                          th:text="${currentManualScore}"></span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Total Questions</td>
-                                <td th:text="${submission.totalQuestions}"></td>
-                            </tr>
-                            <tr>
-                                <td>Needs Review</td>
-                                <td>
-                                    <span class="badge" style="background:#c28812;"
-                                          th:text="${textInputCount}"></span>
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
 
-                <div th:if="${submission.isGraded()}"
-                     class="mt-3 p-3 rounded d-flex align-items-center gap-2"
-                     style="background:#f0faf5; border:1px solid #b7dfc9; color:#267a4b; font-size:0.9rem;">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <span>Graded on
-                        <strong th:text="${#temporals.format(submission.gradedAt, 'MMM dd, yyyy HH:mm')}"></strong>
-                    </span>
-                </div>
-            </div>
-
-            <div class="results-card p-4 mb-4">
-                <div class="section-title">
-                    <i class="bi bi-list-check"></i> Review Answers
-                </div>
-
-                <div th:each="detail : ${answerDetails}"
-                     class="question-card"
-                     th:classappend="${detail.isCorrect} ? 'correct' : (${detail.needsManualGrade} ? 'needs-grading' : 'incorrect')">
-
-                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
-                        <span class="fw-semibold text-muted small">
-                            Question <span th:text="${detail.questionNumber}"></span>
+                    <div class="grade-header-status">
+                        <span class="status-pill"
+                              th:classappend="${submission.isGraded()} ? 'graded' : 'pending'">
+                            <i th:class="${submission.isGraded()} ? 'bi bi-check-circle-fill me-1' : 'bi bi-clock-history me-1'"></i>
+                            <span th:text="${submission.isGraded()} ? 'Already Graded' : 'Pending Grade'">Pending Grade</span>
                         </span>
-                        <div class="d-flex gap-1 flex-wrap">
-                            <span th:if="${detail.isCorrect}" class="badge bg-success">
-                                <i class="bi bi-check-circle me-1"></i>Correct
-                            </span>
-                            <span th:if="${!detail.isCorrect and !detail.needsManualGrade}" class="badge bg-danger">
-                                <i class="bi bi-x-circle me-1"></i>Incorrect
-                            </span>
-                            <span th:if="${detail.needsManualGrade}" class="badge bg-warning text-dark">
-                                <i class="bi bi-pencil me-1"></i>Needs Grading
-                            </span>
-                            <span th:if="${detail.isTextInput}" class="badge bg-info">
-                                <i class="bi bi-chat-text me-1"></i>Open-Ended
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <div class="small fw-semibold text-muted mb-1">
-                                <i class="bi bi-person me-1"></i>Student's Answer
-                            </div>
-                            <div class="answer-box student" th:text="${detail.studentAnswer}"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="small fw-semibold text-muted mb-1">
-                                <i class="bi bi-check-square me-1"></i>Expected Answer
-                            </div>
-                            <div class="answer-box expected" th:text="${detail.correctAnswer}"></div>
-                        </div>
-                    </div>
-
-                    <div th:if="${detail.needsManualGrade}"
-                         class="mt-2 p-2 rounded small"
-                         style="background:#fffbf0; border:1px solid #f5dfa0; color:#7a5c00;">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Review this open-ended answer and assign points for this question.
-                        <div class="mt-2">
-                            <label class="form-label form-label-sm fw-semibold mb-1">Points for this question</label>
-                            <input type="number"
-                                   class="form-control form-control-sm manual-question-score manual-question-input"
-                                   th:name="${'manual_q_' + detail.questionNumber}"
-                                   th:value="${detail.manualPoints != null ? detail.manualPoints : 0}"
-                                   min="0"
-                                   th:max="${maxManualScore}">
-                        </div>
+                        <small th:if="${submission.isGraded()}"
+                               th:text="'Last graded: ' + ${#temporals.format(submission.gradedAt, 'MMM dd, yyyy HH:mm')}">
+                            Last graded time
+                        </small>
                     </div>
                 </div>
             </div>
 
-            <div class="results-card p-4">
-                <div class="section-title">
-                    <i class="bi bi-award"></i> Finalize Grade
+            <form th:action="@{/teacher/finalize-grade}" method="post" class="grade-workspace">
+                <input type="hidden" name="submissionId" th:value="${submission.id}">
+                <input type="hidden" id="manualScoreTotal" name="manualScore" th:value="${currentManualScore}">
+                <input type="hidden" name="returnTo" th:value="${returnTo}">
+
+                <div class="results-card grade-overview-card mb-4">
+                    <div class="overview-meta-grid">
+                        <div class="meta-item">
+                            <span>Student</span>
+                            <strong th:text="${submission.studentEmail}">student@example.com</strong>
+                        </div>
+                        <div class="meta-item">
+                            <span>Exam</span>
+                            <strong th:text="${submission.examName}">Quiz 1</strong>
+                        </div>
+                        <div class="meta-item">
+                            <span>Submitted</span>
+                            <strong th:text="${#temporals.format(submission.submittedAt, 'MMM dd, yyyy HH:mm')}">Mar 12, 2026 08:00</strong>
+                        </div>
+                        <div class="meta-item">
+                            <span>Manual Review</span>
+                            <strong th:text="${textInputCount} + ' item(s)'">0 item(s)</strong>
+                        </div>
+                    </div>
+
+                    <div class="overview-score-strip">
+                        <div class="score-chip auto">
+                            <small>Auto Score</small>
+                            <strong th:text="${submission.score + ' / ' + submission.totalQuestions}">0 / 0</strong>
+                        </div>
+                        <div class="score-chip manual">
+                            <small>Current Manual</small>
+                            <strong th:text="${currentManualScore}">0</strong>
+                        </div>
+                        <div class="score-chip total">
+                            <small>Questions</small>
+                            <strong th:text="${submission.totalQuestions}">0</strong>
+                        </div>
+                    </div>
                 </div>
 
-                <form th:action="@{/teacher/finalize-grade}" method="post">
-                    <input type="hidden" name="submissionId" th:value="${submission.id}">
-                    <input type="hidden" id="manualScoreTotal" name="manualScore" th:value="${currentManualScore}">
-
-                    <div class="row g-4">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold small" style="color:#4c2a11;">
-                                <i class="bi bi-plus-circle me-1"></i>Manual Score
-                                <span class="text-muted fw-normal">(sum of all open-ended question points)</span>
-                            </label>
-                            <div class="form-control bg-light" id="manualScoreDisplay" th:text="${currentManualScore}">0</div>
-                            <div class="form-text">
-                                Assign points per open-ended question above. Maximum total manual score:
-                                <strong th:text="${maxManualScore}">0</strong>
+                <div class="row g-4 align-items-start">
+                    <div class="col-xl-8">
+                        <div class="results-card grade-review-card">
+                            <div class="section-title mb-3">
+                                <i class="bi bi-list-check"></i> Review Answers
                             </div>
 
-                            <label for="teacherComments" class="form-label fw-semibold small mt-3" style="color:#4c2a11;">
-                                <i class="bi bi-chat-left-text me-1"></i>Teacher Comments
-                                <span class="text-muted fw-normal">(Optional)</span>
-                            </label>
-                            <textarea class="form-control"
-                                      id="teacherComments"
-                                      name="teacherComments"
-                                      rows="4"
-                                      placeholder="Provide feedback to the student..."
-                                      th:text="${submission.teacherComments}"></textarea>
+                            <div th:if="${answerDetails.isEmpty()}" class="grade-empty-state">
+                                <i class="bi bi-inbox"></i>
+                                <p class="mb-0">No answer details available.</p>
+                            </div>
+
+                            <div th:each="detail : ${answerDetails}"
+                                 class="question-card"
+                                 th:classappend="${detail.isCorrect} ? 'correct' : (${detail.needsManualGrade} ? 'needs-grading' : 'incorrect')">
+
+                                <div class="question-head">
+                                    <span class="question-no">Question <span th:text="${detail.questionNumber}">1</span></span>
+                                    <div class="question-badges">
+                                        <span th:if="${detail.isCorrect}" class="badge bg-success">
+                                            <i class="bi bi-check-circle me-1"></i>Correct
+                                        </span>
+                                        <span th:if="${!detail.isCorrect and !detail.needsManualGrade}" class="badge bg-danger">
+                                            <i class="bi bi-x-circle me-1"></i>Incorrect
+                                        </span>
+                                        <span th:if="${detail.needsManualGrade}" class="badge bg-warning text-dark">
+                                            <i class="bi bi-pencil me-1"></i>Needs Grading
+                                        </span>
+                                        <span th:if="${detail.isTextInput}" class="badge bg-info text-dark">
+                                            <i class="bi bi-chat-text me-1"></i>Open-Ended
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="answer-label">Student Answer</div>
+                                        <div class="answer-box student" th:text="${detail.studentAnswer}">Student answer</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="answer-label">Expected Answer</div>
+                                        <div class="answer-box expected" th:text="${detail.correctAnswer}">Expected answer</div>
+                                    </div>
+                                </div>
+
+                                <div th:if="${detail.needsManualGrade}" class="manual-grade-panel mt-3">
+                                    <div class="manual-grade-copy">
+                                        <i class="bi bi-lightbulb me-1"></i>
+                                        Assign a score for this open-ended response.
+                                    </div>
+                                    <div>
+                                        <label class="form-label form-label-sm fw-semibold mb-1">Points</label>
+                                        <input type="number"
+                                               class="form-control form-control-sm manual-question-score manual-question-input"
+                                               th:name="${'manual_q_' + detail.questionNumber}"
+                                               th:value="${detail.manualPoints != null ? detail.manualPoints : 0}"
+                                               min="0"
+                                               th:max="${maxManualScore}">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                    </div>
 
-                        <div class="col-md-6">
-                            <div class="form-label fw-semibold small mb-2" style="color:#4c2a11;">
-                                <i class="bi bi-calculator me-1"></i>Final Score Preview
+                    <div class="col-xl-4">
+                        <div class="results-card grade-finalize-card">
+                            <div class="section-title mb-3">
+                                <i class="bi bi-award"></i> Finalize Grade
                             </div>
-                            <div class="score-preview-box">
+
+                            <div class="manual-score-box mb-3">
+                                <div>
+                                    <small>Manual Score Total</small>
+                                    <div id="manualScoreDisplay" th:text="${currentManualScore}">0</div>
+                                </div>
+                                <span class="manual-cap" th:text="'Max ' + ${maxManualScore}">Max 0</span>
+                            </div>
+
+                            <div class="score-preview-box mb-3">
                                 <div class="preview-row">
                                     <span>Auto Score</span>
-                                    <span th:text="${submission.score}"></span>
+                                    <span th:text="${submission.score}">0</span>
                                 </div>
                                 <div class="preview-row">
                                     <span>Manual Score</span>
                                     <span id="previewManual">0</span>
                                 </div>
                                 <div class="preview-row final">
-                                    <span>Final Score</span>
+                                    <span>Final</span>
                                     <span>
-                                        <span id="previewFinal" th:text="${submission.score}"></span>
-                                        / <span th:text="${submission.totalQuestions}"></span>
-                                        &nbsp;(<span id="previewPercent">0</span>%)
+                                        <span id="previewFinal" th:text="${submission.score}">0</span>
+                                        / <span th:text="${submission.totalQuestions}">0</span>
+                                        (<span id="previewPercent">0</span>%)
                                     </span>
                                 </div>
                             </div>
+
+                            <div class="mb-3">
+                                <label for="teacherComments" class="form-label fw-semibold small">Teacher Comments</label>
+                                <textarea class="form-control"
+                                          id="teacherComments"
+                                          name="teacherComments"
+                                          rows="4"
+                                          placeholder="Provide feedback to the student..."
+                                          th:text="${submission.teacherComments}"></textarea>
+                            </div>
+
+                            <div class="release-choice-wrap mb-3">
+                                <label class="form-label fw-semibold small mb-2">Release Option</label>
+                                <label for="releaseNow" class="release-choice-item">
+                                    <input class="form-check-input" type="radio" name="releaseOption" id="releaseNow" value="RELEASE_TO_STUDENT" checked>
+                                    <span>
+                                        <strong>Finalize and release now</strong>
+                                        <small>Student can view the graded result immediately.</small>
+                                    </span>
+                                </label>
+                                <label for="finalizeOnly" class="release-choice-item">
+                                    <input class="form-check-input" type="radio" name="releaseOption" id="finalizeOnly" value="FINALIZE_ONLY">
+                                    <span>
+                                        <strong>Finalize only</strong>
+                                        <small>Keep the result hidden until you release it later.</small>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <button type="submit" class="finalize-btn">
+                                <i class="bi bi-check-circle me-2"></i>Finalize Grade
+                            </button>
                         </div>
                     </div>
-
-                    <div class="mt-3 p-3 rounded" style="background:#faf8f4; border:1px solid #eadfce;">
-                        <label class="form-label fw-semibold small mb-2" style="color:#4c2a11;">
-                            <i class="bi bi-send-check me-1"></i>Release Option
-                        </label>
-                        <div class="form-check mb-1">
-                            <input class="form-check-input" type="radio" name="releaseOption" id="releaseNow" value="RELEASE_TO_STUDENT" checked>
-                            <label class="form-check-label" for="releaseNow">
-                                Finalize and release to student now
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="releaseOption" id="finalizeOnly" value="FINALIZE_ONLY">
-                            <label class="form-check-label" for="finalizeOnly">
-                                Finalize only (keep hidden from student for now)
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="mt-4">
-                        <button type="submit" class="finalize-btn">
-                            <i class="bi bi-check-circle me-2"></i>Finalize Grade
-                        </button>
-                        <p class="text-muted small text-center mt-2 mb-0">
-                            <i class="bi bi-info-circle me-1"></i>
-                            You can choose whether to release the finalized grade to the student immediately.
-                        </p>
-                    </div>
-                </form>
-            </div>
-
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -259,7 +231,11 @@
         const inputs = Array.from(document.querySelectorAll('.manual-question-score'));
         let manualScore = 0;
         inputs.forEach(input => {
+            const max = parseInt(input.max, 10);
             const value = parseInt(input.value, 10);
+            if (!Number.isNaN(max) && value > max) {
+                input.value = String(max);
+            }
             if (!Number.isNaN(value) && value > 0) {
                 manualScore += value;
             }
@@ -280,9 +256,18 @@
         if (manualDisplay) {
             manualDisplay.textContent = manualScore;
         }
-        document.getElementById('previewManual').textContent = manualScore;
-        document.getElementById('previewFinal').textContent = finalScore;
-        document.getElementById('previewPercent').textContent = percentage;
+        const previewManual = document.getElementById('previewManual');
+        const previewFinal = document.getElementById('previewFinal');
+        const previewPercent = document.getElementById('previewPercent');
+        if (previewManual) {
+            previewManual.textContent = String(manualScore);
+        }
+        if (previewFinal) {
+            previewFinal.textContent = String(finalScore);
+        }
+        if (previewPercent) {
+            previewPercent.textContent = String(percentage);
+        }
     }
 
     document.querySelectorAll('.manual-question-score').forEach(input => {

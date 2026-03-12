@@ -17,101 +17,87 @@
     <div class="teacher-content-wrapper">
         <div class="container-fluid py-4">
 
-            <div class="result-topbar d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-                <div>
-                    <a th:href="${returnTo}"
-                       class="btn btn-sm btn-outline-secondary mb-2">
-                        <i class="bi bi-arrow-left"></i> Back
-                    </a>
-                    <h4 class="mb-0 fw-bold result-page-title">
-                        <i class="bi bi-person-lines-fill me-2"></i>Student Result Details
-                    </h4>
-                    <p class="text-muted mb-0 result-page-subtitle">Detailed view of student's exam submission and performance.</p>
-                </div>
-                <div class="d-flex gap-2 flex-wrap result-top-actions">
-                    <a th:unless="${submission.isGraded()}"
-                       th:href="@{/teacher/grade/{id}(id=${submission.id})}"
-                       class="btn btn-warning">
-                        <i class="bi bi-pencil me-1"></i> Grade This Submission
-                    </a>
-                    <form th:action="@{/teacher/toggle-result-release/{id}(id=${submission.id})}"
-                          method="post" class="d-inline">
-                        <input type="hidden" name="redirectTo" value="detail">
-                                                <input type="hidden" name="returnTo" th:value="${returnTo}">
-                        <button type="submit"
-                                th:classappend="${submission.resultsReleased ? 'btn-secondary' : 'btn-success'}"
-                                class="btn"
-                                th:title="${submission.resultsReleased ? 'Hide result from student' : 'Release result to student'}">
-                            <i th:class="${submission.resultsReleased ? 'bi bi-eye-slash me-1' : 'bi bi-eye me-1'}"></i>
-                            <span th:text="${submission.resultsReleased ? 'Hide Result' : 'Release Result'}"></span>
-                        </button>
-                    </form>
+            <div class="results-card result-hero-card mb-4">
+                <div class="result-hero-main">
+                    <div>
+                        <a th:href="${returnTo}" class="btn btn-sm btn-outline-secondary mb-2">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                        <h4 class="mb-1 fw-bold result-page-title">
+                            <i class="bi bi-person-lines-fill me-2"></i>Student Result Details
+                        </h4>
+                        <p class="result-page-subtitle mb-2">Detailed view of student submission, grading status, and final analytics.</p>
+                        <div class="hero-meta-tags">
+                            <span class="hero-tag">
+                                <i class="bi bi-envelope me-1"></i>
+                                <span th:text="${submission.studentEmail}">student@example.com</span>
+                            </span>
+                            <span class="hero-tag">
+                                <i class="bi bi-journal-text me-1"></i>
+                                <span th:text="${submission.examName}">Quiz Name</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="result-top-actions">
+                        <a th:unless="${submission.isGraded()}"
+                           th:href="@{/teacher/grade/{id}(id=${submission.id},returnTo=${returnTo})}"
+                           class="btn btn-warning">
+                            <i class="bi bi-pencil me-1"></i> Grade This Submission
+                        </a>
+                    </div>
                 </div>
             </div>
 
-            <div class="results-card p-4 mb-4 result-summary-card">
-                <div class="row g-4">
+            <div class="results-card result-summary-card mb-4">
+                <div class="row g-4 align-items-stretch">
 
                     <div class="col-lg-8">
                         <div class="section-title">
                             <i class="bi bi-file-earmark-text"></i> Exam Information
                         </div>
-                        <table class="detail-info-table w-100">
-                            <tr>
-                                <td>Student Email</td>
-                                <td th:text="${submission.studentEmail}">student@example.com</td>
-                            </tr>
-                            <tr>
-                                <td>Exam Name</td>
-                                <td th:text="${submission.examName}">Exam Name</td>
-                            </tr>
-                            <tr>
-                                <td>Subject</td>
-                                <td>
-                                    <span class="badge bg-info" th:text="${submission.subject}">Subject</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Activity Type</td>
-                                <td>
-                                    <span class="badge"
-                                          th:classappend="${submission.activityType == 'Exam' ? 'bg-danger' : 'bg-primary'}"
-                                          th:text="${submission.activityType}">Type</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Submitted</td>
-                                <td th:text="${#temporals.format(submission.submittedAt, 'MMM dd, yyyy HH:mm')}">Date</td>
-                            </tr>
-                            <tr th:if="${submission.isGraded()}">
-                                <td>Graded</td>
-                                <td th:text="${#temporals.format(submission.gradedAt, 'MMM dd, yyyy HH:mm')}">Date</td>
-                            </tr>
-                        </table>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <span>Subject</span>
+                                <strong th:text="${submission.subject}">Subject</strong>
+                            </div>
+                            <div class="detail-item">
+                                <span>Activity Type</span>
+                                <strong th:text="${submission.activityType}">Quiz</strong>
+                            </div>
+                            <div class="detail-item">
+                                <span>Submitted</span>
+                                <strong th:text="${#temporals.format(submission.submittedAt, 'MMM dd, yyyy HH:mm')}">Date</strong>
+                            </div>
+                            <div class="detail-item" th:if="${submission.isGraded()}">
+                                <span>Graded</span>
+                                <strong th:text="${#temporals.format(submission.gradedAt, 'MMM dd, yyyy HH:mm')}">Date</strong>
+                            </div>
+                            <div class="detail-item" th:unless="${submission.isGraded()}">
+                                <span>Graded</span>
+                                <strong>Not yet</strong>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="col-lg-4">
                         <div class="score-panel">
+                            <small>Final Score</small>
                             <div class="score-number" th:text="${submission.finalScore + '/' + submission.totalQuestions}">0/0</div>
                             <div class="score-pct" th:text="${#numbers.formatDecimal(submission.finalPercentage, 1, 1) + '%'}">0%</div>
-                            <div class="mt-2">
-                                <span th:if="${submission.isGraded()}" class="badge bg-success px-3 py-2">
-                                    <i class="bi bi-check-circle me-1"></i>Graded
-                                </span>
-                                <span th:unless="${submission.isGraded()}" class="badge bg-warning text-dark px-3 py-2">
-                                    <i class="bi bi-clock me-1"></i>Pending
-                                </span>
-                            </div>
+                            <span class="badge px-3 py-2"
+                                  th:classappend="${submission.isGraded()} ? 'bg-success' : 'bg-warning text-dark'">
+                                <i th:class="${submission.isGraded()} ? 'bi bi-check-circle me-1' : 'bi bi-clock me-1'"></i>
+                                <span th:text="${submission.isGraded()} ? 'Graded' : 'Pending'">Pending</span>
+                            </span>
                         </div>
                     </div>
                 </div>
 
-                <div class="row g-3 mt-3">
+                <div class="row g-3 mt-1">
                     <div class="col-6 col-md-3">
                         <div class="clean-stat-card">
-                            <div class="clean-stat-icon" style="background:#e8f5ee; color:#267a4b;">
-                                <i class="bi bi-check-circle-fill"></i>
-                            </div>
+                            <div class="clean-stat-icon success"><i class="bi bi-check-circle-fill"></i></div>
                             <div>
                                 <div class="clean-stat-value" th:text="${correctAnswers}">0</div>
                                 <div class="clean-stat-label">Correct</div>
@@ -120,9 +106,7 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="clean-stat-card">
-                            <div class="clean-stat-icon" style="background:#fdecea; color:#b02a37;">
-                                <i class="bi bi-x-circle-fill"></i>
-                            </div>
+                            <div class="clean-stat-icon danger"><i class="bi bi-x-circle-fill"></i></div>
                             <div>
                                 <div class="clean-stat-value" th:text="${incorrectAnswers}">0</div>
                                 <div class="clean-stat-label">Incorrect</div>
@@ -131,9 +115,7 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="clean-stat-card">
-                            <div class="clean-stat-icon" style="background:#edf2ff; color:#3557c7;">
-                                <i class="bi bi-calculator-fill"></i>
-                            </div>
+                            <div class="clean-stat-icon info"><i class="bi bi-calculator-fill"></i></div>
                             <div>
                                 <div class="clean-stat-value" th:text="${submission.score}">0</div>
                                 <div class="clean-stat-label">Auto Score</div>
@@ -142,9 +124,7 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="clean-stat-card">
-                            <div class="clean-stat-icon" style="background:#e7f7fb; color:#1c84b7;">
-                                <i class="bi bi-pencil-square"></i>
-                            </div>
+                            <div class="clean-stat-icon sky"><i class="bi bi-pencil-square"></i></div>
                             <div>
                                 <div class="clean-stat-value" th:text="${submission.manualScore != null ? submission.manualScore : 0}">0</div>
                                 <div class="clean-stat-label">Manual Score</div>
@@ -155,27 +135,27 @@
 
                 <div th:if="${submission.isGraded() && submission.teacherComments != null && !#strings.isEmpty(submission.teacherComments)}"
                      class="feedback-block mt-4">
-                    <div class="fw-bold mb-1" style="color:#7a1022;">
-                        <i class="bi bi-chat-left-text me-1"></i> Teacher's Feedback
+                    <div class="feedback-title">
+                        <i class="bi bi-chat-left-text me-1"></i> Teacher Feedback
                     </div>
-                    <p class="mb-0 text-muted small" th:text="${submission.teacherComments}">No comments.</p>
+                    <p class="mb-0" th:text="${submission.teacherComments}">No comments.</p>
                 </div>
             </div>
 
-            <div class="results-card p-4 mb-4 result-answer-card">
-                <div class="section-title">
+            <div class="results-card result-answer-card mb-4">
+                <div class="section-title mb-3">
                     <i class="bi bi-list-check"></i> Answer Details
                 </div>
 
-                <div th:if="${answerDetails.isEmpty()}" class="text-center text-muted py-5">
-                    <i class="bi bi-inbox" style="font-size:2.5rem; opacity:.4;"></i>
+                <div th:if="${answerDetails.isEmpty()}" class="answer-empty">
+                    <i class="bi bi-inbox"></i>
                     <p class="mt-2 mb-0">No answer details available.</p>
                 </div>
 
                 <div th:each="detail : ${answerDetails}"
                      th:classappend="${detail.isCorrect ? 'correct-answer' : 'incorrect-answer'}"
                      class="answer-item">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="answer-head">
                         <span class="fw-semibold text-muted small">
                             Question <span th:text="${detail.questionNumber}">1</span>
                         </span>
@@ -186,17 +166,16 @@
                             <i class="bi bi-x-lg me-1"></i>Incorrect
                         </span>
                     </div>
-                    <div>
-                        <div class="small fw-semibold text-muted mb-1">
-                            <i class="bi bi-person-fill me-1"></i>Student's Answer
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="answer-label"><i class="bi bi-person-fill me-1"></i>Student Answer</div>
+                            <div class="answer-text" th:text="${detail.studentAnswer}">Student answer</div>
                         </div>
-                        <div class="answer-text" th:text="${detail.studentAnswer}">Student answer</div>
-                    </div>
-                    <div class="mt-2">
-                        <div class="small fw-semibold text-muted mb-1">
-                            <i class="bi bi-check2-square me-1"></i>Correct Answer
+                        <div class="col-md-6">
+                            <div class="answer-label"><i class="bi bi-check2-square me-1"></i>Correct Answer</div>
+                            <div class="answer-text" th:text="${detail.correctAnswer}">Correct answer</div>
                         </div>
-                        <div class="answer-text" th:text="${detail.correctAnswer}">Correct answer</div>
                     </div>
                 </div>
             </div>

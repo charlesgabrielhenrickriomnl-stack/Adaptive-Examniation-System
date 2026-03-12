@@ -67,7 +67,7 @@
                             <div class="dashboard-panel-head">
                                 <p class="panel-kicker mb-1">Assessment Pipeline</p>
                                 <h3 class="panel-title mb-1">Examination Processing</h3>
-                                <p class="panel-subtitle mb-0">Upload your questionnaire and optional answer key to generate adaptive-ready content.</p>
+                                <p class="panel-subtitle mb-0">Upload your questionnaire file to generate adaptive-ready content.</p>
                             </div>
 
                             <form th:action="@{/teacher/process-exams-upload}" method="post" enctype="multipart/form-data" id="uploadForm" class="dashboard-upload-form">
@@ -104,13 +104,10 @@
                                     </div>
 
                                     <div class="processing-section">
-                                        <div class="processing-section-title">Upload Files</div>
+                                        <div class="processing-section-title">Upload File</div>
 
                                         <label class="form-label processing-label processing-label-primary">Select Test Questionnaire (PDF or CSV) *</label>
-                                        <input class="form-control mb-3" type="file" name="examCreated" accept=".pdf,.csv" required>
-
-                                        <label class="form-label processing-label processing-label-warning">Select Answer Key (PDF or CSV) - Optional</label>
-                                        <input class="form-control" type="file" name="answerKeyPdf" accept=".pdf,.csv">
+                                        <input class="form-control" type="file" name="examCreated" accept=".pdf,.csv" required>
                                     </div>
                                 </div>
 
@@ -118,6 +115,72 @@
                                     <button type="submit" class="btn processing-submit-btn">Start Processing</button>
                                 </div>
                             </form>
+
+                            <div class="processing-section csv-sample-section mt-3">
+                                <div class="csv-sample-head">
+                                    <p class="processing-section-title mb-0">CSV Format Sample</p>
+                                    <a th:href="@{/teacher/csv-template}" class="btn btn-sm csv-template-download-btn">
+                                        <i class="bi bi-download me-1"></i>Download Template
+                                    </a>
+                                </div>
+                                <div class="csv-sample-wrap mt-2">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm csv-sample-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>ID</th>
+                                                    <th>Difficulty</th>
+                                                    <th>Question_Text</th>
+                                                    <th>Choice_A</th>
+                                                    <th>Choice_B</th>
+                                                    <th>Choice_C</th>
+                                                    <th>Choice_D</th>
+                                                    <th>Correct_Answer</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>1</td>
+                                                    <td>Easy</td>
+                                                    <td>What does 'URL' stand for?</td>
+                                                    <td>Uniform Resource Locator</td>
+                                                    <td>Universal Resource Link</td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td>A</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>2</td>
+                                                    <td>Medium</td>
+                                                    <td>Which is an input device?</td>
+                                                    <td>Monitor</td>
+                                                    <td>Keyboard</td>
+                                                    <td>Printer</td>
+                                                    <td>Speaker</td>
+                                                    <td>B</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>3</td>
+                                                    <td>Hard</td>
+                                                    <td>Define 'Software' in your own words.</td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td>A set of instructions or programs that tell hardware what to do.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <ul class="processing-guide-bullets csv-sample-notes mb-0 mt-2">
+                                    <li><strong>Difficulty</strong> accepts <strong>Easy</strong>, <strong>Medium</strong>, or <strong>Hard</strong>.</li>
+                                    <li>Add as many choice columns as needed using <strong>Choice_A</strong>, <strong>Choice_B</strong>, ..., <strong>Choice_Z</strong>.</li>
+                                    <li>For <strong>Correct_Answer</strong>, use the matching letter (<strong>A</strong>, <strong>B</strong>, <strong>C</strong>, ...).</li>
+                                    <li>If choices are blank, the row is treated as <strong>Open-Ended</strong> (you may put an optional reference answer in <strong>Correct_Answer</strong>).</li>
+                                    <li>If <strong>Correct_Answer</strong> is blank, the row is also treated as <strong>Open-Ended</strong>.</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -145,8 +208,7 @@
                                 <p class="side-card-kicker mb-2">Processing Guide</p>
                                 <ol class="processing-guide-list">
                                     <li>Single PDF with inline answer lines.</li>
-                                    <li>Question PDF plus separate answer-key PDF.</li>
-                                    <li>CSV with difficulty, question, choices, and correct answer.</li>
+                                    <li>Single CSV with difficulty, question, choices, and correct answer.</li>
                                 </ol>
                                 <hr>
                                 <p class="side-card-kicker mb-2">Math Input Tips</p>

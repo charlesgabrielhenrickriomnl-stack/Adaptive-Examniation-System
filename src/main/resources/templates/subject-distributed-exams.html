@@ -87,7 +87,7 @@
                             <td>
                                 <div class="d-inline-flex gap-2">
                                     <a class="btn btn-sm btn-outline-primary"
-                                       th:href="@{/teacher/subject-classroom/{id}/distribution-students(id=${subject.id},filterExamName=${quiz.filterExamName},filterActivityType=${quiz.filterActivityType},filterTimeLimit=${quiz.filterTimeLimit},filterDeadline=${quiz.filterDeadline})}">
+                                       th:href="@{/teacher/subject-classroom/{id}/distribution-students(id=${subject.id},filterExamName=${quiz.filterExamName},filterActivityType=${quiz.filterActivityType},filterTimeLimit=${quiz.filterTimeLimit},filterDeadline=${quiz.filterDeadline},distributionId=${quiz.distributionId})}">
                                         <i class="bi bi-people me-1"></i> View Students
                                     </a>
                                     <button th:if="${quiz.overdue}"
@@ -95,13 +95,14 @@
                                             class="btn btn-sm btn-outline-warning open-reopen-batch-modal"
                                             data-bs-toggle="modal"
                                             data-bs-target="#reopenBatchModal"
-                                            th:attr="data-exam-name=${quiz.filterExamName},data-activity-type=${quiz.filterActivityType},data-time-limit=${quiz.filterTimeLimit},data-deadline=${quiz.filterDeadline},data-exam-label=${quiz.examName}">
+                                            th:attr="data-distribution-id=${quiz.distributionId},data-exam-name=${quiz.filterExamName},data-activity-type=${quiz.filterActivityType},data-time-limit=${quiz.filterTimeLimit},data-deadline=${quiz.filterDeadline},data-exam-label=${quiz.examName}">
                                         <i class="bi bi-arrow-clockwise me-1"></i> Re-open
                                     </button>
                                     <form th:action="@{/teacher/subject-classroom/{id}/distributed-exams/delete(id=${subject.id})}"
                                           method="post"
                                           class="d-inline"
                                           onsubmit="return confirm('Delete this distributed quiz batch? This cannot be undone.');">
+                                        <input type="hidden" name="distributionId" th:value="${quiz.distributionId}">
                                         <input type="hidden" name="examName" th:value="${quiz.filterExamName}">
                                         <input type="hidden" name="activityType" th:value="${quiz.filterActivityType}">
                                         <input type="hidden" name="timeLimit" th:value="${quiz.filterTimeLimit}">
@@ -134,6 +135,7 @@
                                 <input type="hidden" name="activityType" id="reopenBatchActivityType">
                                 <input type="hidden" name="timeLimit" id="reopenBatchTimeLimit">
                                 <input type="hidden" name="deadline" id="reopenBatchDeadline">
+                                <input type="hidden" name="distributionId" id="reopenBatchDistributionId">
 
                                 <div class="mb-3">
                                     <label for="reopenBatchPreset" class="form-label">Re-open Window</label>

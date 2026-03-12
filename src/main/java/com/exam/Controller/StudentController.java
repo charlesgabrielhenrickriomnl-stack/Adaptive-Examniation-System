@@ -649,9 +649,19 @@ public class StudentController {
 
         examSubmissionRepository.save(submission);
 
-        if (incrementExposureCounts(questionRows, questionOrder)) {
-            paper.setOriginalQuestionsJson(gson.toJson(questionRows));
-            originalProcessedPaperRepository.save(paper);
+        boolean questionBankChanged = incrementExposureCounts(questionRows, questionOrder);
+        if (paper != null) {
+            boolean difficultyCalibrated = recalibrateQuestionDifficulties(
+                paper,
+                questionRows,
+                distributedExam.getExamId(),
+                distributedExam.getExamName(),
+                distributedExam.getSubject());
+
+            if (questionBankChanged || difficultyCalibrated) {
+                paper.setOriginalQuestionsJson(gson.toJson(questionRows));
+                originalProcessedPaperRepository.save(paper);
+            }
         }
 
         distributedExam.setSubmitted(true);
@@ -1255,6 +1265,163 @@ public class StudentController {
         return changed;
     }
 
+    private boolean recalibrateQuestionDifficulties(OriginalProcessedPaper paper,
+                                                    List<Map<String, Object>> questionRows,
+                                                    String examId,
+                                                    String examName,
+                                                    String subject) {
+        if (paper == null
+            || questionRows == null
+            || questionRows.isEmpty()
+            || examId == null
+            || examId.isBlank()) {
+            return false;
+        }
+
+        List<ExamSubmission> submissions = examSubmissionRepository.findByExamNameAndSubject(examName, subject);
+        if (submissions.isEmpty()) {
+            return false;
+        }
+
+        Map<Integer, int[]> statsBySourceQuestion = new HashMap<>();
+        for (ExamSubmission submission : submissions) {
+            if (submission == null || !matchesSubmissionExamId(submission, examId, examName, subject)) {
+                continue;
+            }
+
+            Set<Integer> countedForSubmission = new HashSet<>();
+            List<Map<String, Object>> finalAnswers = extractAnswerDetails(submission.getAnswerDetailsJson());
+            for (Map<String, Object> answerItem : finalAnswers) {
+                if (answerItem == null) {
+                    continue;
+                }
+
+                String type = String.valueOf(answerItem.getOrDefault("type", ""));
+                if ("OPEN_ENDED".equalsIgnoreCase(type.trim())) {
+                    continue;
+                }
+
+                Integer sourceQuestionNumber = extractInteger(answerItem.get("sourceQuestionNumber"));
+                if (sourceQuestionNumber == null || sourceQuestionNumber <= 0) {
+                    sourceQuestionNumber = extractInteger(answerItem.get("questionNumber"));
+                }
+                if (sourceQuestionNumber == null || sourceQuestionNumber <= 0) {
+                    continue;
+                }
+                if (!countedForSubmission.add(sourceQuestionNumber)) {
+                    continue;
+                }
+
+                Boolean isCorrect = extractBoolean(answerItem.get("isCorrect"));
+                if (isCorrect == null) {
+                    continue;
+                }
+
+                int[] stats = statsBySourceQuestion.computeIfAbsent(sourceQuestionNumber, key -> new int[2]);
+                if (isCorrect) {
+                    stats[0]++;
+                }
+                stats[1]++;
+            }
+        }
+
+        if (statsBySourceQuestion.isEmpty()) {
+            return false;
+        }
+
+        Map<String, String> difficultyMap = parseSimpleMapJson(paper.getDifficultiesJson());
+        Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
+        boolean changed = false;
+
+        for (Map.Entry<Integer, int[]> entry : statsBySourceQuestion.entrySet()) {
+            Integer sourceQuestionNumber = entry.getKey();
+            int[] stats = entry.getValue();
+            if (sourceQuestionNumber == null || sourceQuestionNumber <= 0 || stats == null) {
+                continue;
+            }
+
+            int sourceIndex = sourceQuestionNumber - 1;
+            if (sourceIndex < 0 || sourceIndex >= questionRows.size()) {
+                continue;
+            }
+
+            int total = stats[1];
+            if (total < 3) {
+                continue;
+            }
+
+            Map<String, Object> questionRow = questionRows.get(sourceIndex);
+            if (questionRow == null) {
+                continue;
+            }
+
+            String key = String.valueOf(sourceQuestionNumber);
+            String difficulty = normalizeDifficulty(difficultyMap.getOrDefault(key, "Medium"));
+            String correctAnswerRaw = answerKeyMap.getOrDefault(key, "");
+            String displayQuestion = buildQuestionForDelivery(questionRow, difficulty, correctAnswerRaw, false);
+            List<String> availableChoices = extractChoiceTexts(questionRow, displayQuestion);
+            if (isOpenEndedQuestion(questionRow, displayQuestion, correctAnswerRaw, availableChoices)) {
+                continue;
+            }
+
+            IRT3PLService.ItemParameters params = resolveItemParameters(questionRow, difficulty);
+            double nextDifficulty = estimateNextDifficulty(params, stats[0], total);
+            if (!matchesNumeric(questionRow.get("irtB"), nextDifficulty)) {
+                questionRow.put("irtB", nextDifficulty);
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private boolean matchesSubmissionExamId(ExamSubmission submission,
+                                            String examId,
+                                            String examName,
+                                            String subject) {
+        if (submission == null || examId == null || examId.isBlank()) {
+            return false;
+        }
+
+        Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
+        Object payloadExamId = payload.get("examId");
+        if (payloadExamId == null || String.valueOf(payloadExamId).isBlank()) {
+            return sameText(submission.getExamName(), examName)
+                && sameText(submission.getSubject(), subject);
+        }
+
+        return sameText(String.valueOf(payloadExamId), examId);
+    }
+
+    private double estimateNextDifficulty(IRT3PLService.ItemParameters params, int correct, int total) {
+        if (params == null || total <= 0) {
+            return 0.0;
+        }
+
+        double a = Math.max(0.30, Math.min(3.00, params.getDiscrimination()));
+        double c = Math.max(0.00, Math.min(0.35, params.getGuessing()));
+        double currentB = Math.max(-3.00, Math.min(3.00, params.getDifficulty()));
+
+        // Laplace smoothing keeps p away from exact 0/1 and stabilizes small cohorts.
+        double observedP = (correct + 0.5) / (total + 1.0);
+        double minP = Math.min(0.95, c + 0.03);
+        double boundedP = clamp(observedP, minP, 0.97);
+
+        double denominator = boundedP - c;
+        if (denominator <= 0.0001) {
+            return currentB;
+        }
+
+        double ratio = ((1.0 - c) / denominator) - 1.0;
+        if (ratio <= 0.0001) {
+            return currentB;
+        }
+
+        double targetB = clamp(Math.log(ratio) / a, -3.00, 3.00);
+        double learningRate = clamp(0.10 + (total * 0.02), 0.10, 0.45);
+        return clamp(currentB + (learningRate * (targetB - currentB)), -3.00, 3.00);
+    }
+
     private IRT3PLService.ItemParameters resolveItemParameters(Map<String, Object> questionRow, String difficulty) {
         IRT3PLService.ItemParameters defaults = buildDefaultItemParamsForDifficulty(difficulty);
         if (questionRow == null || questionRow.isEmpty()) {
@@ -1300,6 +1467,30 @@ public class StudentController {
     private boolean matchesNumeric(Object rawValue, double expected) {
         Double parsed = extractDouble(rawValue);
         return parsed != null && Math.abs(parsed - expected) < 0.00001;
+    }
+
+    private Boolean extractBoolean(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if ("true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized)) {
+            return true;
+        }
+        if ("false".equals(normalized) || "0".equals(normalized) || "no".equals(normalized)) {
+            return false;
+        }
+        return null;
     }
 
     private boolean isOpenEndedQuestion(Map<String, Object> questionRow,
@@ -1604,6 +1795,10 @@ public class StudentController {
         return Math.max(0.0, Math.min(100.0, value));
     }
 
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private ExamContentSnapshot loadExamContent(DistributedExam distributedExam) {
         List<Map<String, Object>> questionRows = parseQuestionsJson(distributedExam.getQuestionsJson());
         Map<String, String> difficultyMap = parseSimpleMapJson(distributedExam.getDifficultiesJson());
@@ -1763,85 +1958,104 @@ public class StudentController {
             .replaceAll("\\n{3,}", "\\n\\n");
 
         normalized = normalized
-            .replace("×", "\\times")
-            .replace("÷", "\\div")
-            .replace("≤", "\\le")
-            .replace("≥", "\\ge")
-            .replace("≠", "\\ne")
-            .replace("≈", "\\approx")
-            .replace("∞", "\\infty")
-            .replace("π", "\\pi")
-            .replace("α", "\\alpha")
-            .replace("β", "\\beta")
-            .replace("γ", "\\gamma")
-            .replace("Δ", "\\Delta")
-            .replace("θ", "\\theta")
-            .replace("∑", "\\sum")
-            .replace("∏", "\\prod")
-            .replace("√", "\\sqrt")
-            .replace("∫", "\\int");
+            .replace("\\times", "×")
+            .replace("\\div", "÷")
+            .replace("\\le", "≤")
+            .replace("\\ge", "≥")
+            .replace("\\ne", "≠")
+            .replace("\\approx", "≈")
+            .replace("\\infty", "∞")
+            .replace("\\pi", "π")
+            .replace("\\alpha", "α")
+            .replace("\\beta", "β")
+            .replace("\\gamma", "γ")
+            .replace("\\Delta", "Δ")
+            .replace("\\theta", "θ")
+            .replace("\\sum", "∑")
+            .replace("\\prod", "∏")
+            .replace("\\sqrt", "√")
+            .replace("\\int", "∫");
 
-        StringBuilder rebuilt = new StringBuilder();
-        for (int index = 0; index < normalized.length(); index++) {
-            char ch = normalized.charAt(index);
-            String superscript = toSuperscriptToken(ch);
-            if (superscript != null) {
-                rebuilt.append(superscript);
-                continue;
-            }
-
-            String subscript = toSubscriptToken(ch);
-            if (subscript != null) {
-                rebuilt.append(subscript);
-                continue;
-            }
-
-            rebuilt.append(ch);
-        }
-
-        return rebuilt.toString().trim();
+        return decodeSuperscriptAndSubscriptTokens(normalized).trim();
     }
 
-    private String toSuperscriptToken(char value) {
+    private String decodeSuperscriptAndSubscriptTokens(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        StringBuilder rebuilt = new StringBuilder();
+        for (int index = 0; index < value.length(); index++) {
+            if (value.startsWith("^\\circ", index)) {
+                rebuilt.append('\u00B0');
+                index += "^\\circ".length() - 1;
+                continue;
+            }
+
+            char current = value.charAt(index);
+            if (current == '^' && index + 1 < value.length()) {
+                Character superscript = toSuperscriptChar(value.charAt(index + 1));
+                if (superscript != null) {
+                    rebuilt.append(superscript);
+                    index++;
+                    continue;
+                }
+            }
+
+            if (current == '_' && index + 1 < value.length()) {
+                Character subscript = toSubscriptChar(value.charAt(index + 1));
+                if (subscript != null) {
+                    rebuilt.append(subscript);
+                    index++;
+                    continue;
+                }
+            }
+
+            rebuilt.append(current);
+        }
+
+        return rebuilt.toString();
+    }
+
+    private Character toSuperscriptChar(char value) {
         return switch (value) {
-            case '\u00B0' -> "^\\circ";
-            case '\u00B9' -> "^1";
-            case '\u00B2' -> "^2";
-            case '\u00B3' -> "^3";
-            case '\u2070' -> "^0";
-            case '\u2074' -> "^4";
-            case '\u2075' -> "^5";
-            case '\u2076' -> "^6";
-            case '\u2077' -> "^7";
-            case '\u2078' -> "^8";
-            case '\u2079' -> "^9";
-            case '\u207A' -> "^+";
-            case '\u207B' -> "^-";
-            case '\u207C' -> "^=";
-            case '\u207D' -> "^(";
-            case '\u207E' -> "^)";
-            case '\u207F' -> "^n";
+            case '0' -> '\u2070';
+            case '1' -> '\u00B9';
+            case '2' -> '\u00B2';
+            case '3' -> '\u00B3';
+            case '4' -> '\u2074';
+            case '5' -> '\u2075';
+            case '6' -> '\u2076';
+            case '7' -> '\u2077';
+            case '8' -> '\u2078';
+            case '9' -> '\u2079';
+            case '+' -> '\u207A';
+            case '-' -> '\u207B';
+            case '=' -> '\u207C';
+            case '(' -> '\u207D';
+            case ')' -> '\u207E';
+            case 'n', 'N' -> '\u207F';
             default -> null;
         };
     }
 
-    private String toSubscriptToken(char value) {
+    private Character toSubscriptChar(char value) {
         return switch (value) {
-            case '\u2080' -> "_0";
-            case '\u2081' -> "_1";
-            case '\u2082' -> "_2";
-            case '\u2083' -> "_3";
-            case '\u2084' -> "_4";
-            case '\u2085' -> "_5";
-            case '\u2086' -> "_6";
-            case '\u2087' -> "_7";
-            case '\u2088' -> "_8";
-            case '\u2089' -> "_9";
-            case '\u208A' -> "_+";
-            case '\u208B' -> "_-";
-            case '\u208C' -> "_=";
-            case '\u208D' -> "_(";
-            case '\u208E' -> "_)";
+            case '0' -> '\u2080';
+            case '1' -> '\u2081';
+            case '2' -> '\u2082';
+            case '3' -> '\u2083';
+            case '4' -> '\u2084';
+            case '5' -> '\u2085';
+            case '6' -> '\u2086';
+            case '7' -> '\u2087';
+            case '8' -> '\u2088';
+            case '9' -> '\u2089';
+            case '+' -> '\u208A';
+            case '-' -> '\u208B';
+            case '=' -> '\u208C';
+            case '(' -> '\u208D';
+            case ')' -> '\u208E';
             default -> null;
         };
     }

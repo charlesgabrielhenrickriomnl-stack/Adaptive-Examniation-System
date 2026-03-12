@@ -12,6 +12,7 @@ public interface ExamSubmissionRepository extends JpaRepository<ExamSubmission, 
     List<ExamSubmission> findByStudentEmail(String studentEmail);
     List<ExamSubmission> findByStudentEmailAndExamName(String studentEmail, String examName);
     List<ExamSubmission> findByStudentEmailAndExamNameAndSubject(String studentEmail, String examName, String subject);
+    List<ExamSubmission> findByExamNameAndSubject(String examName, String subject);
     List<ExamSubmission> findByResultsReleasedFalse(); // Pending release
     List<ExamSubmission> findByIsGradedFalse(); // Pending teacher grading
     List<ExamSubmission> findByStudentEmailIn(List<String> studentEmails);

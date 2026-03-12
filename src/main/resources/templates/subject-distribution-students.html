@@ -123,14 +123,14 @@
                                 <div class="d-flex gap-1 flex-wrap">
                                     <a th:if="${item.submissionId != null}"
                                        th:href="${item.viewResultUrl}"
-                                       class="btn btn-sm btn-outline-primary"
+                                                    class="btn btn-sm distribution-paper-btn"
                                        title="View submitted exam paper">
                                         <i class="bi bi-file-earmark-text me-1"></i>Paper
                                     </a>
 
                                     <a th:if="${item.submissionId != null and item.needsManualGrading}"
-                                       th:href="@{/teacher/grade/{id}(id=${item.submissionId})}"
-                                       class="btn btn-sm btn-warning"
+                                                    th:href="${item.viewGradeUrl}"
+                                       class="btn btn-sm distribution-grade-btn"
                                        title="Grade open-ended answers">
                                         <i class="bi bi-pencil-square me-1"></i>Grade
                                     </a>
@@ -145,9 +145,10 @@
                                         <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                         <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
                                         <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
+                                        <input type="hidden" name="distributionId" th:value="${item.distributionId}">
                                         <button type="submit"
-                                                class="btn btn-sm"
-                                                th:classappend="${item.resultsReleased ? 'btn-outline-secondary' : 'btn-outline-success'}"
+                                            class="btn btn-sm distribution-release-btn"
+                                            th:classappend="${item.resultsReleased ? 'is-released' : 'is-hidden'}"
                                                 th:disabled="${item.needsManualGrading}"
                                                 th:title="${item.needsManualGrading ? 'Complete open-ended grading before release' : (item.resultsReleased ? 'Hide grade from student' : 'Release grade to student')}">
                                             <i th:class="${item.resultsReleased ? 'bi bi-eye-slash me-1' : 'bi bi-eye me-1'}"></i>
@@ -157,10 +158,10 @@
 
                                     <button th:if="${deadlinePassed}"
                                             type="button"
-                                            class="btn btn-sm btn-outline-warning open-reopen-student-modal"
+                                            class="btn btn-sm distribution-retake-btn open-reopen-student-modal"
                                             data-bs-toggle="modal"
                                             data-bs-target="#reopenStudentModal"
-                                            th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-reopen-label='Allow Retake'"
+                                            th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-distribution-id=${item.distributionId},data-reopen-label='Allow Retake'"
                                             title="Create a custom retake schedule for this student">
                                         <i class="bi bi-arrow-clockwise me-1"></i>Allow Retake
                                     </button>
@@ -191,10 +192,10 @@
                             <td>
                                 <button th:if="${deadlinePassed}"
                                         type="button"
-                                        class="btn btn-sm btn-outline-warning open-reopen-student-modal"
+                                        class="btn btn-sm distribution-retake-btn open-reopen-student-modal"
                                         data-bs-toggle="modal"
                                         data-bs-target="#reopenStudentModal"
-                                        th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-reopen-label='Re-open'">
+                                        th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-distribution-id=${item.distributionId},data-reopen-label='Re-open'">
                                     <i class="bi bi-arrow-clockwise me-1"></i>Re-open
                                 </button>
                                 <span th:if="${!deadlinePassed}" class="text-muted small">No paper yet</span>
@@ -224,10 +225,10 @@
                             <td>
                                 <button th:if="${deadlinePassed}"
                                         type="button"
-                                        class="btn btn-sm btn-outline-warning open-reopen-student-modal"
+                                        class="btn btn-sm distribution-retake-btn open-reopen-student-modal"
                                         data-bs-toggle="modal"
                                         data-bs-target="#reopenStudentModal"
-                                        th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-reopen-label='Re-open'">
+                                        th:attr="data-student-email=${item.studentEmail},data-student-name=${item.studentName},data-distribution-id=${item.distributionId},data-reopen-label='Re-open'">
                                     <i class="bi bi-arrow-clockwise me-1"></i>Re-open
                                 </button>
                                 <span th:if="${!deadlinePassed}" class="text-muted small">Waiting</span>
@@ -255,6 +256,7 @@
                                 <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                 <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
                                 <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
+                                <input type="hidden" name="distributionId" id="reopenStudentDistributionId" th:value="${distributionId}">
 
                                 <div class="mb-3">
                                     <label for="reopenPreset" class="form-label">Re-open Window</label>

@@ -90,7 +90,7 @@
         return map[ch] || null;
     }
 
-    function normalizeEquationArtifactsText(rawText, trimResult = true) {
+    function normalizeEquationArtifactsText(rawText, trimResult = true, convertEquationTokens = false) {
         if (rawText == null) {
             return '';
         }
@@ -125,21 +125,23 @@
 
         let rebuilt = '';
         for (const ch of normalized) {
-            const superscript = toSuperscriptToken(ch);
-            if (superscript) {
-                rebuilt += superscript;
-                continue;
-            }
+            if (convertEquationTokens) {
+                const superscript = toSuperscriptToken(ch);
+                if (superscript) {
+                    rebuilt += superscript;
+                    continue;
+                }
 
-            const subscript = toSubscriptToken(ch);
-            if (subscript) {
-                rebuilt += subscript;
-                continue;
-            }
+                const subscript = toSubscriptToken(ch);
+                if (subscript) {
+                    rebuilt += subscript;
+                    continue;
+                }
 
-            if (symbolMap[ch]) {
-                rebuilt += symbolMap[ch];
-                continue;
+                if (symbolMap[ch]) {
+                    rebuilt += symbolMap[ch];
+                    continue;
+                }
             }
 
             rebuilt += ch;
@@ -153,7 +155,7 @@
         return trimResult ? normalizedWhitespace.trim() : normalizedWhitespace;
     }
 
-    function normalizeEquationArtifactsInHtml(rawHtml) {
+    function normalizeEquationArtifactsInHtml(rawHtml, convertEquationTokens = false) {
         if (!rawHtml) {
             return '';
         }
@@ -162,7 +164,7 @@
         const doc = parser.parseFromString(`<div id="mq-normalize-root">${rawHtml}</div>`, 'text/html');
         const root = doc.getElementById('mq-normalize-root');
         if (!root) {
-            return normalizeEquationArtifactsText(rawHtml);
+            return normalizeEquationArtifactsText(rawHtml, true, convertEquationTokens);
         }
 
         const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -172,10 +174,40 @@
         }
 
         textNodes.forEach(node => {
-            node.nodeValue = normalizeEquationArtifactsText(node.nodeValue || '', false);
+            node.nodeValue = normalizeEquationArtifactsText(node.nodeValue || '', false, convertEquationTokens);
         });
 
         return (root.innerHTML || '').trim();
+    }
+
+    function shouldPreferPlainTextPaste(rawHtml, plainText) {
+        if (!rawHtml || !rawHtml.trim()) {
+            return true;
+        }
+
+        if (!plainText || !plainText.trim()) {
+            return false;
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(rawHtml, 'text/html');
+        const body = doc && doc.body ? doc.body : null;
+        if (!body) {
+            return true;
+        }
+
+        const hasComplexMathMarkup = !!body.querySelector('math, mrow, mfrac, msup, msub, msqrt, mtable, svg, mjx-container, .MathJax, .katex, .katex-mathml');
+        if (hasComplexMathMarkup) {
+            return true;
+        }
+
+        const htmlText = (body.textContent || '').replace(/\s+/g, ' ').trim();
+        const plain = String(plainText || '').replace(/\s+/g, ' ').trim();
+        if (!htmlText && plain) {
+            return true;
+        }
+
+        return false;
     }
 
     function toggleAddQuestionTypeFields() {
@@ -762,8 +794,12 @@
                 const rawHtml = clipboard ? clipboard.getData('text/html') : '';
                 const plainText = clipboard ? clipboard.getData('text/plain') : '';
                 const cleanHtml = sanitizePastedHtml(rawHtml);
-                const normalizedHtml = normalizeEquationArtifactsInHtml(cleanHtml);
-                const normalizedText = normalizeEquationArtifactsText(plainText);
+                const normalizedHtml = normalizeEquationArtifactsInHtml(cleanHtml, false);
+                const normalizedText = normalizeEquationArtifactsText(plainText, true, false);
+                if (shouldPreferPlainTextPaste(cleanHtml, normalizedText)) {
+                    insertEditorContent(editor, '', normalizedText);
+                    return;
+                }
                 insertEditorContent(editor, normalizedHtml, normalizedText);
             });
             editor.addEventListener('mouseup', function () {

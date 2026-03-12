@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const activityTypeInput = document.getElementById('reopenBatchActivityType');
         const timeLimitInput = document.getElementById('reopenBatchTimeLimit');
         const deadlineInput = document.getElementById('reopenBatchDeadline');
+        const distributionIdInput = document.getElementById('reopenBatchDistributionId');
         const presetSelect = document.getElementById('reopenBatchPreset');
         const customWrap = document.getElementById('reopenBatchCustomWrap');
         const customInput = document.getElementById('reopenBatchCustomDeadline');
@@ -53,6 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const activityType = trigger.getAttribute('data-activity-type') || '';
             const timeLimit = trigger.getAttribute('data-time-limit') || '';
             const deadline = trigger.getAttribute('data-deadline') || '';
+            const distributionId = trigger.getAttribute('data-distribution-id') || '';
 
             if (batchLabel) {
                 batchLabel.textContent = examLabel + (activityType ? ' - ' + activityType : '');
@@ -68,6 +70,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (deadlineInput) {
                 deadlineInput.value = deadline;
+            }
+            if (distributionIdInput) {
+                distributionIdInput.value = distributionId;
             }
             if (presetSelect) {
                 presetSelect.value = '24h';

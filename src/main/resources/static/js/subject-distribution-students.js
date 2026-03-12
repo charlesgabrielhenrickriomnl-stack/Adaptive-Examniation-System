@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const reopenTitle = document.getElementById('reopenStudentModalTitle');
         const reopenStudentName = document.getElementById('reopenStudentName');
         const studentEmailInput = document.getElementById('reopenStudentEmailInput');
+        const distributionIdInput = document.getElementById('reopenStudentDistributionId');
         const presetSelect = document.getElementById('reopenPreset');
         const customWrap = document.getElementById('customDeadlineWrap');
         const customInput = document.getElementById('customDeadline');
@@ -48,6 +49,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const studentEmail = trigger.getAttribute('data-student-email') || '';
             const studentName = trigger.getAttribute('data-student-name') || 'Student';
+            const distributionId = trigger.getAttribute('data-distribution-id') || '';
             const reopenLabel = trigger.getAttribute('data-reopen-label') || 'Re-open';
 
             if (reopenTitle) {
@@ -58,6 +60,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (studentEmailInput) {
                 studentEmailInput.value = studentEmail;
+            }
+            if (distributionIdInput) {
+                distributionIdInput.value = distributionId;
             }
             if (presetSelect) {
                 presetSelect.value = '24h';

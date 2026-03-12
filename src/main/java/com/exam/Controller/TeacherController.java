@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,12 @@ import java.util.stream.Collectors;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -60,6 +66,8 @@ import com.google.gson.reflect.TypeToken;
 @RequestMapping("/teacher")
 @SuppressWarnings("all")
 public class TeacherController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TeacherController.class);
+
     @Autowired
     private com.exam.repository.DistributedExamRepository distributedExamRepository;
 
@@ -139,6 +147,22 @@ public class TeacherController {
     @GetMapping("/loading")
     public String loading() {
         return "teacher-loading";
+    }
+
+    @GetMapping("/csv-template")
+    public ResponseEntity<byte[]> downloadCsvTemplate() {
+        String template = String.join("\n",
+            "ID,Difficulty,Question_Text,Choice_A,Choice_B,Choice_C,Choice_D,Correct_Answer",
+            "1,Easy,What does 'URL' stand for?,\"Uniform Resource Locator\",\"Universal Resource Link\",,,A",
+            "2,Medium,Which is an input device?,\"Monitor\",\"Keyboard\",\"Printer\",\"Speaker\",B",
+            "3,Hard,Define 'Software' in your own words.,,,,,\"A set of instructions or programs that tell hardware what to do.\""
+        ) + "\n";
+
+        byte[] content = template.getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=exam-upload-template.csv")
+            .contentType(MediaType.parseMediaType("text/csv"))
+            .body(content);
     }
 
     @GetMapping("/department-dashboard")
@@ -529,7 +553,6 @@ public class TeacherController {
 
     @PostMapping("/process-exams-upload")
     public String processExamsUpload(@RequestParam("examCreated") MultipartFile examCreated,
-                                     @RequestParam(value = "answerKeyPdf", required = false) MultipartFile answerKeyPdf,
                                      @RequestParam(value = "quizName", required = false) String quizName,
                                      @RequestParam("subject") String subject,
                                      @RequestParam("activityType") String activityType,
@@ -547,7 +570,7 @@ public class TeacherController {
             }
 
             List<Map<String, Object>> questions = parseExamFile(examCreated);
-            Map<String, String> answerKeyMap = parseAnswerKey(questions, answerKeyPdf);
+            Map<String, String> answerKeyMap = parseAnswerKey(questions, null);
             Map<String, String> difficulties = buildDifficultiesFromQuestions(questions);
 
             String originalFilename = examCreated.getOriginalFilename();
@@ -575,18 +598,6 @@ public class TeacherController {
             paper.setSourceFilePath(storedExamFile.relativePath());
             paper.setSourceFileChecksum(storedExamFile.checksum());
             paper.setSourceFileSize(storedExamFile.size());
-
-            if (answerKeyPdf != null && !answerKeyPdf.isEmpty()) {
-                UploadStorageService.StoredFile storedAnswerKeyFile = uploadStorageService.store(
-                    "processed-exams-answer-keys",
-                    principal.getName(),
-                    answerKeyPdf
-                );
-                paper.setAnswerKeyFilename(storedAnswerKeyFile.originalFilename());
-                paper.setAnswerKeyFilePath(storedAnswerKeyFile.relativePath());
-                paper.setAnswerKeyFileChecksum(storedAnswerKeyFile.checksum());
-                paper.setAnswerKeyFileSize(storedAnswerKeyFile.size());
-            }
 
             originalProcessedPaperRepository.save(paper);
             syncQuestionBankForPaper(paper, questions, difficulties, answerKeyMap);
@@ -836,48 +847,61 @@ public class TeacherController {
             return "redirect:/teacher/processed-papers";
         }
 
-        List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
-        Map<String, String> difficulties = parseSimpleMapJson(paper.getDifficultiesJson());
-        Map<String, String> answerKey = parseSimpleMapJson(paper.getAnswerKeyJson());
+        try {
+            List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
+            Map<String, String> difficulties = parseSimpleMapJson(paper.getDifficultiesJson());
+            Map<String, String> answerKey = parseSimpleMapJson(paper.getAnswerKeyJson());
 
-        Map<String, Object> newQuestion = new HashMap<>();
-        String normalizedQuestion = normalizeQuestionHtml(questionText);
-        boolean openEnded = "OPEN_ENDED".equalsIgnoreCase(questionType);
+            Map<String, Object> newQuestion = new HashMap<>();
+            String normalizedQuestion = normalizeQuestionHtml(questionText);
+            boolean openEnded = "OPEN_ENDED".equalsIgnoreCase(questionType);
 
-        if (openEnded && !normalizedQuestion.startsWith("[TEXT_INPUT]")) {
-            normalizedQuestion = "[TEXT_INPUT]" + normalizedQuestion;
-        }
+            if (openEnded && !normalizedQuestion.startsWith("[TEXT_INPUT]")) {
+                normalizedQuestion = "[TEXT_INPUT]" + normalizedQuestion;
+            }
 
-        newQuestion.put("question", normalizedQuestion);
+            newQuestion.put("question", normalizedQuestion);
 
-        List<String> choices = new ArrayList<>();
-        if (!openEnded && choicesText != null && !choicesText.isBlank()) {
-            for (String line : choicesText.split("\\r?\\n")) {
-                String normalizedChoice = normalizeMathSymbols(line);
-                if (!normalizedChoice.isBlank()) {
-                    choices.add(normalizedChoice);
+            List<String> choices = new ArrayList<>();
+            if (!openEnded && choicesText != null && !choicesText.isBlank()) {
+                for (String line : choicesText.split("\\r?\\n")) {
+                    String normalizedChoice = normalizeMathSymbols(line);
+                    if (!normalizedChoice.isBlank()) {
+                        choices.add(normalizedChoice);
+                    }
                 }
             }
+            newQuestion.put("choices", choices);
+            applyDefaultItemParameters(newQuestion, normalizeDifficulty(difficulty));
+
+            int newNumber = questions.size() + 1;
+            String key = String.valueOf(newNumber);
+            questions.add(newQuestion);
+            difficulties.put(key, normalizeMathSymbols(difficulty).isBlank() ? "Medium" : normalizeMathSymbols(difficulty));
+            String normalizedAnswer = normalizeMathSymbols(answer);
+            answerKey.put(key, openEnded
+                ? (normalizedAnswer.isBlank() ? "MANUAL_GRADE" : normalizedAnswer)
+                : normalizedAnswer);
+
+            paper.setOriginalQuestionsJson(gson.toJson(questions));
+            paper.setDifficultiesJson(gson.toJson(difficulties));
+            paper.setAnswerKeyJson(gson.toJson(answerKey));
+            originalProcessedPaperRepository.save(paper);
+
+            try {
+                syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
+            } catch (Exception syncException) {
+                LOGGER.error("Question bank sync failed after adding question. examId={}", examId, syncException);
+                redirectAttributes.addFlashAttribute("warningMessage",
+                    "Question was added, but question bank sync encountered an issue.");
+            }
+
+            redirectAttributes.addFlashAttribute("successMessage", "Question added successfully.");
+        } catch (Exception exception) {
+            LOGGER.error("Failed to add question. examId={}", examId, exception);
+            redirectAttributes.addFlashAttribute("errorMessage",
+                "Unable to add question due to invalid pasted formatting. Please paste as plain text and try again.");
         }
-        newQuestion.put("choices", choices);
-        applyDefaultItemParameters(newQuestion, normalizeDifficulty(difficulty));
-
-        int newNumber = questions.size() + 1;
-        String key = String.valueOf(newNumber);
-        questions.add(newQuestion);
-        difficulties.put(key, normalizeMathSymbols(difficulty).isBlank() ? "Medium" : normalizeMathSymbols(difficulty));
-        String normalizedAnswer = normalizeMathSymbols(answer);
-        answerKey.put(key, openEnded
-            ? (normalizedAnswer.isBlank() ? "MANUAL_GRADE" : normalizedAnswer)
-            : normalizedAnswer);
-
-        paper.setOriginalQuestionsJson(gson.toJson(questions));
-        paper.setDifficultiesJson(gson.toJson(difficulties));
-        paper.setAnswerKeyJson(gson.toJson(answerKey));
-        originalProcessedPaperRepository.save(paper);
-        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
-
-        redirectAttributes.addFlashAttribute("successMessage", "Question added successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
     }
 
@@ -903,39 +927,55 @@ public class TeacherController {
             return "redirect:/teacher/processed-papers";
         }
 
-        List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
-        if (questionIndex == null || questionIndex < 0 || questionIndex >= questions.size()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Invalid question index.");
-            return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
+        try {
+            List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
+            if (questionIndex == null || questionIndex < 0 || questionIndex >= questions.size()) {
+                redirectAttributes.addFlashAttribute("errorMessage", "Invalid question index.");
+                return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
+            }
+
+            Map<String, String> difficulties = parseSimpleMapJson(paper.getDifficultiesJson());
+            Map<String, String> answerKey = parseSimpleMapJson(paper.getAnswerKeyJson());
+
+            boolean openEnded = "OPEN_ENDED".equalsIgnoreCase(questionType);
+            String normalizedQuestion = normalizeQuestionHtml(questionText);
+            if (openEnded && !normalizedQuestion.startsWith("[TEXT_INPUT]")) {
+                normalizedQuestion = "[TEXT_INPUT]" + normalizedQuestion;
+            }
+
+            Map<String, Object> target = questions.get(questionIndex);
+            target.put("question", normalizedQuestion);
+            applyDefaultItemParameters(target, normalizeDifficulty(difficulty));
+
+            String key = String.valueOf(questionIndex + 1);
+            difficulties.put(key, normalizeMathSymbols(difficulty).isBlank() ? "Medium" : normalizeMathSymbols(difficulty));
+            String normalizedAnswer = normalizeMathSymbols(answer);
+            answerKey.put(key, openEnded
+                ? (normalizedAnswer.isBlank() ? "MANUAL_GRADE" : normalizedAnswer)
+                : normalizedAnswer);
+
+            paper.setOriginalQuestionsJson(gson.toJson(questions));
+            paper.setDifficultiesJson(gson.toJson(difficulties));
+            paper.setAnswerKeyJson(gson.toJson(answerKey));
+            originalProcessedPaperRepository.save(paper);
+
+            try {
+                syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
+            } catch (Exception syncException) {
+                LOGGER.error("Question bank sync failed after editing question. examId={}, questionIndex={}",
+                    examId,
+                    questionIndex,
+                    syncException);
+                redirectAttributes.addFlashAttribute("warningMessage",
+                    "Question was updated, but question bank sync encountered an issue.");
+            }
+
+            redirectAttributes.addFlashAttribute("successMessage", "Question updated successfully.");
+        } catch (Exception exception) {
+            LOGGER.error("Failed to edit question. examId={}, questionIndex={}", examId, questionIndex, exception);
+            redirectAttributes.addFlashAttribute("errorMessage",
+                "Unable to update question due to invalid pasted formatting. Please paste as plain text and try again.");
         }
-
-        Map<String, String> difficulties = parseSimpleMapJson(paper.getDifficultiesJson());
-        Map<String, String> answerKey = parseSimpleMapJson(paper.getAnswerKeyJson());
-
-        boolean openEnded = "OPEN_ENDED".equalsIgnoreCase(questionType);
-        String normalizedQuestion = normalizeQuestionHtml(questionText);
-        if (openEnded && !normalizedQuestion.startsWith("[TEXT_INPUT]")) {
-            normalizedQuestion = "[TEXT_INPUT]" + normalizedQuestion;
-        }
-
-        Map<String, Object> target = questions.get(questionIndex);
-        target.put("question", normalizedQuestion);
-        applyDefaultItemParameters(target, normalizeDifficulty(difficulty));
-
-        String key = String.valueOf(questionIndex + 1);
-        difficulties.put(key, normalizeMathSymbols(difficulty).isBlank() ? "Medium" : normalizeMathSymbols(difficulty));
-        String normalizedAnswer = normalizeMathSymbols(answer);
-        answerKey.put(key, openEnded
-            ? (normalizedAnswer.isBlank() ? "MANUAL_GRADE" : normalizedAnswer)
-            : normalizedAnswer);
-
-        paper.setOriginalQuestionsJson(gson.toJson(questions));
-        paper.setDifficultiesJson(gson.toJson(difficulties));
-        paper.setAnswerKeyJson(gson.toJson(answerKey));
-        originalProcessedPaperRepository.save(paper);
-        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
-
-        redirectAttributes.addFlashAttribute("successMessage", "Question updated successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
     }
 
@@ -957,23 +997,38 @@ public class TeacherController {
             return "redirect:/teacher/processed-papers";
         }
 
-        List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
-        if (questionIndex == null || questionIndex < 0 || questionIndex >= questions.size()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "Invalid question index.");
-            return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
+        try {
+            List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
+            if (questionIndex == null || questionIndex < 0 || questionIndex >= questions.size()) {
+                redirectAttributes.addFlashAttribute("errorMessage", "Invalid question index.");
+                return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
+            }
+
+            questions.remove((int) questionIndex);
+            Map<String, String> difficulties = reindexMap(parseSimpleMapJson(paper.getDifficultiesJson()), questions.size());
+            Map<String, String> answerKey = reindexMap(parseSimpleMapJson(paper.getAnswerKeyJson()), questions.size());
+
+            paper.setOriginalQuestionsJson(gson.toJson(questions));
+            paper.setDifficultiesJson(gson.toJson(difficulties));
+            paper.setAnswerKeyJson(gson.toJson(answerKey));
+            originalProcessedPaperRepository.save(paper);
+
+            try {
+                syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
+            } catch (Exception syncException) {
+                LOGGER.error("Question bank sync failed after deleting question. examId={}, questionIndex={}",
+                    examId,
+                    questionIndex,
+                    syncException);
+                redirectAttributes.addFlashAttribute("warningMessage",
+                    "Question was deleted, but question bank sync encountered an issue.");
+            }
+
+            redirectAttributes.addFlashAttribute("successMessage", "Question deleted successfully.");
+        } catch (Exception exception) {
+            LOGGER.error("Failed to delete question. examId={}, questionIndex={}", examId, questionIndex, exception);
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to delete question right now. Please try again.");
         }
-
-        questions.remove((int) questionIndex);
-        Map<String, String> difficulties = reindexMap(parseSimpleMapJson(paper.getDifficultiesJson()), questions.size());
-        Map<String, String> answerKey = reindexMap(parseSimpleMapJson(paper.getAnswerKeyJson()), questions.size());
-
-        paper.setOriginalQuestionsJson(gson.toJson(questions));
-        paper.setDifficultiesJson(gson.toJson(difficulties));
-        paper.setAnswerKeyJson(gson.toJson(answerKey));
-        originalProcessedPaperRepository.save(paper);
-        syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
-
-        redirectAttributes.addFlashAttribute("successMessage", "Question deleted successfully.");
         return "redirect:/teacher/manage-questions/" + examId + buildReturnToQuery(returnTo);
     }
 
@@ -1304,6 +1359,7 @@ public class TeacherController {
 
     @PostMapping("/subject-classroom/{id}/distributed-exams/delete")
     public String deleteDistributedExamBatch(@PathVariable("id") Long id,
+                                             @RequestParam(name = "distributionId", required = false) Long distributionId,
                                              @RequestParam("examName") String examName,
                                              @RequestParam("activityType") String activityType,
                                              @RequestParam("timeLimit") Integer timeLimit,
@@ -1320,6 +1376,35 @@ public class TeacherController {
         if (!isOwner(principal, subject.getTeacherEmail())) {
             redirectAttributes.addFlashAttribute("errorMessage", "You are not allowed to modify this subject.");
             return "redirect:/teacher/subjects";
+        }
+
+        if (distributionId != null) {
+            Optional<DistributedExam> distributionOpt = distributedExamRepository.findById(distributionId);
+            if (distributionOpt.isEmpty()
+                || !sameText(distributionOpt.get().getSubject(), subject.getSubjectName())) {
+                redirectAttributes.addFlashAttribute("errorMessage", "Distributed quiz record not found.");
+                return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
+            }
+
+            DistributedExam distribution = distributionOpt.get();
+            List<ExamSubmission> linkedSubmissions = examSubmissionRepository
+                .findByStudentEmailAndExamNameAndSubject(
+                    distribution.getStudentEmail(),
+                    distribution.getExamName(),
+                    distribution.getSubject())
+                .stream()
+                .filter(submission -> distributionId.equals(extractSubmissionDistributedExamId(submission)))
+                .toList();
+
+            distributedExamRepository.delete(distribution);
+            if (!linkedSubmissions.isEmpty()) {
+                examSubmissionRepository.deleteAll(linkedSubmissions);
+            }
+
+            redirectAttributes.addFlashAttribute("successMessage",
+                "Distributed quiz deleted successfully (1 assignment, "
+                    + linkedSubmissions.size() + " submission(s)).");
+            return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
         }
 
         String normalizedDeadline = deadline == null ? "" : deadline.trim();
@@ -1462,6 +1547,7 @@ public class TeacherController {
         int attempted = 0;
         int distributed = 0;
         int failed = 0;
+        Set<String> usedQuestionOrders = new HashSet<>();
         for (String studentEmail : selectedStudents) {
             if (studentEmail == null || studentEmail.isBlank()) {
                 continue;
@@ -1476,7 +1562,8 @@ public class TeacherController {
             distExam.setDeadline(deadline == null ? "" : deadline);
             distExam.setDistributedAt(java.time.LocalDateTime.now());
             distExam.setSubmitted(false);
-            distExam.setQuestionIndexesJson(gson.toJson(selectedIndexes));
+            List<Integer> studentQuestionIndexes = buildUniqueQuestionOrder(selectedIndexes, usedQuestionOrders);
+            distExam.setQuestionIndexesJson(gson.toJson(studentQuestionIndexes));
             distributedExamRepository.save(distExam);
             distributed++;
         }
@@ -1532,6 +1619,7 @@ public class TeacherController {
                                              @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
                                              @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
                                              @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                             @RequestParam(name = "distributionId", required = false) Long distributionId,
                                              Model model,
                                              Principal principal) {
         Optional<Subject> subjectOpt = subjectRepository.findById(id);
@@ -1545,45 +1633,95 @@ public class TeacherController {
             return "redirect:/teacher/subjects";
         }
 
-        LocalDateTime filterDeadlineAt = parseDeadlineValue(filterDeadline);
+        List<DistributedExam> matchingDistributions = distributedExamRepository.findAll().stream()
+            .filter(item -> item != null)
+            .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+            .filter(item -> distributionId == null || distributionId.equals(item.getId()))
+            .filter(item -> distributionId != null || filterExamName == null || sameText(item.getExamName(), filterExamName))
+            .filter(item -> distributionId != null || filterActivityType == null || sameText(item.getActivityType(), filterActivityType))
+            .filter(item -> distributionId != null || filterTimeLimit == null || filterTimeLimit.equals(item.getTimeLimit()))
+            .filter(item -> {
+                if (distributionId != null || filterDeadline == null) {
+                    return true;
+                }
+                String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
+                return itemDeadline.equals(filterDeadline.trim());
+            })
+            .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+
+        if (distributionId != null && matchingDistributions.isEmpty()) {
+            return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
+        }
+
+        Map<String, DistributedExam> latestByStudent = new LinkedHashMap<>();
+        for (DistributedExam item : matchingDistributions) {
+            String emailKey = item.getStudentEmail() == null ? "" : item.getStudentEmail().trim().toLowerCase();
+            if (emailKey.isBlank() || latestByStudent.containsKey(emailKey)) {
+                continue;
+            }
+            latestByStudent.put(emailKey, item);
+        }
+        List<DistributedExam> scopedDistributions = distributionId != null
+            ? matchingDistributions.stream().limit(1).toList()
+            : new ArrayList<>(latestByStudent.values());
+
+        DistributedExam filterSource = scopedDistributions.isEmpty() ? null : scopedDistributions.get(0);
+        String effectiveExamName = filterSource != null ? filterSource.getExamName() : filterExamName;
+        String effectiveActivityType = filterSource != null ? filterSource.getActivityType() : filterActivityType;
+        Integer effectiveTimeLimit = filterSource != null ? filterSource.getTimeLimit() : filterTimeLimit;
+        String effectiveDeadline = filterSource != null
+            ? (filterSource.getDeadline() == null ? "" : filterSource.getDeadline().trim())
+            : (filterDeadline == null ? "" : filterDeadline.trim());
+
+        LocalDateTime filterDeadlineAt = parseDeadlineValue(effectiveDeadline);
         boolean deadlinePassed = filterDeadlineAt != null && LocalDateTime.now().isAfter(filterDeadlineAt);
 
-        // Fetch enrolled students
         List<EnrolledStudent> enrolledStudents = enrolledStudentRepository.findBySubjectId(subject.getId());
-
-        // Fetch submissions for this subject and quiz
-        List<ExamSubmission> submissions = examSubmissionRepository.findAll().stream()
-            .filter(sub -> sub.getSubject() != null && sub.getSubject().equalsIgnoreCase(subject.getSubjectName()))
-            .filter(sub -> filterExamName == null || sub.getExamName().equalsIgnoreCase(filterExamName))
-            .filter(sub -> filterActivityType == null || (sub.getActivityType() != null && sub.getActivityType().equalsIgnoreCase(filterActivityType)))
-            .filter(sub -> filterTimeLimit == null || (sub.getTimeLimit() != null && sub.getTimeLimit().equals(filterTimeLimit)))
-            .filter(sub -> filterDeadline == null || (sub.getAnswerDetailsJson() != null && sub.getAnswerDetailsJson().contains(filterDeadline)))
-            .toList();
+        Map<String, String> studentNameByEmail = new HashMap<>();
+        for (EnrolledStudent student : enrolledStudents) {
+            if (student == null || student.getStudentEmail() == null) {
+                continue;
+            }
+            String key = student.getStudentEmail().trim().toLowerCase();
+            if (key.isBlank()) {
+                continue;
+            }
+            studentNameByEmail.put(key, student.getStudentName());
+        }
 
         List<Map<String, Object>> submittedStudents = new ArrayList<>();
         List<Map<String, Object>> notSubmittedStudents = new ArrayList<>();
         List<Map<String, Object>> queuedStudents = new ArrayList<>();
-        String distributionReturnTo = buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+        String distributionReturnTo = buildDistributionStudentsReturnTo(
+            id,
+            effectiveExamName,
+            effectiveActivityType,
+            effectiveTimeLimit,
+            effectiveDeadline,
+            distributionId);
 
-        for (EnrolledStudent student : enrolledStudents) {
-            ExamSubmission submission = submissions.stream()
-                .filter(sub -> sub.getStudentEmail().equalsIgnoreCase(student.getStudentEmail()))
-                .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
-                    Comparator.nullsLast(Comparator.naturalOrder())))
-                .orElse(null);
+        for (DistributedExam distribution : scopedDistributions) {
+            ExamSubmission submission = findLatestSubmissionForDistributedExam(distribution);
+
+            String rawEmail = distribution.getStudentEmail() == null ? "" : distribution.getStudentEmail().trim();
+            String studentName = studentNameByEmail.getOrDefault(rawEmail.toLowerCase(), rawEmail);
 
             Map<String, Object> item = new HashMap<>();
-            item.put("studentName", student.getStudentName());
-            item.put("studentEmail", student.getStudentEmail());
-            item.put("examName", submission != null ? submission.getExamName() : (filterExamName != null ? filterExamName : ""));
-            item.put("activityType", submission != null && submission.getActivityType() != null
-                ? submission.getActivityType()
-                : (filterActivityType != null ? filterActivityType : "Quiz"));
-            item.put("deadline", filterDeadline != null ? filterDeadline : "");
+            item.put("distributionId", distribution.getId());
+            item.put("studentName", studentName == null || studentName.isBlank() ? rawEmail : studentName);
+            item.put("studentEmail", rawEmail);
+            item.put("examName", distribution.getExamName() == null ? "" : distribution.getExamName());
+            item.put("activityType", distribution.getActivityType() == null ? "Quiz" : distribution.getActivityType());
+            item.put("deadline", formatDeadline(distribution.getDeadline()));
             item.put("lastSubmittedAt", submission != null && submission.getSubmittedAt() != null ? submission.getSubmittedAt().toString() : "-");
             item.put("submissionId", submission != null ? submission.getId() : null);
             item.put("viewResultUrl", submission != null
                 ? "/teacher/view-result/" + submission.getId() + buildReturnToQuery(distributionReturnTo)
+                : null);
+            item.put("viewGradeUrl", submission != null
+                ? "/teacher/grade/" + submission.getId() + buildReturnToQuery(distributionReturnTo)
                 : null);
 
             int openEndedCount = 0;
@@ -1604,8 +1742,8 @@ public class TeacherController {
             item.put("isGraded", graded);
             item.put("resultsReleased", released);
 
-            // Only mark as 'Submitted' if isSubmissionCompleted(submission) is true
-            if (submission != null && isSubmissionCompleted(submission)) {
+            boolean completedSubmission = submission != null && isSubmissionCompleted(submission);
+            if (completedSubmission || (submission == null && distribution.isSubmitted())) {
                 submittedStudents.add(item);
             } else if (submission != null) {
                 notSubmittedStudents.add(item);
@@ -1633,12 +1771,17 @@ public class TeacherController {
         model.addAttribute("deadlinePassed", deadlinePassed);
         model.addAttribute("totalTrackedCount", totalTrackedCount);
 
-        model.addAttribute("filterExamName", filterExamName);
-        model.addAttribute("filterActivityType", filterActivityType);
-        model.addAttribute("filterTimeLimit", filterTimeLimit);
-        model.addAttribute("filterDeadline", filterDeadline);
+        model.addAttribute("filterExamName", effectiveExamName);
+        model.addAttribute("filterActivityType", effectiveActivityType);
+        model.addAttribute("filterTimeLimit", effectiveTimeLimit);
+        model.addAttribute("filterDeadline", effectiveDeadline);
+        model.addAttribute("distributionId", distributionId);
         model.addAttribute("activeQuizFilter",
-            filterExamName != null || filterActivityType != null || filterTimeLimit != null || filterDeadline != null);
+            distributionId != null
+                || effectiveExamName != null
+                || effectiveActivityType != null
+                || effectiveTimeLimit != null
+                || (effectiveDeadline != null && !effectiveDeadline.isBlank()));
 
         return "subject-distribution-students";
     }
@@ -1650,6 +1793,7 @@ public class TeacherController {
                                                   @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
                                                   @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
                                                   @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                                  @RequestParam(name = "distributionId", required = false) Long distributionId,
                                                   @RequestParam(name = "reopenPreset", required = false, defaultValue = "24h") String reopenPreset,
                                                   @RequestParam(name = "customDeadline", required = false) String customDeadline,
                                                   Principal principal,
@@ -1669,46 +1813,80 @@ public class TeacherController {
         String normalizedStudentEmail = studentEmail == null ? "" : studentEmail.trim();
         if (normalizedStudentEmail.isBlank()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Student email is required.");
-            return "redirect:" + buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+            return "redirect:" + buildDistributionStudentsReturnTo(
+                id,
+                filterExamName,
+                filterActivityType,
+                filterTimeLimit,
+                filterDeadline,
+                distributionId);
         }
 
-        String normalizedDeadline = filterDeadline == null ? "" : filterDeadline.trim();
-        List<DistributedExam> strictMatches = distributedExamRepository.findAll().stream()
-            .filter(item -> item != null)
-            .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
-            .filter(item -> sameText(item.getStudentEmail(), normalizedStudentEmail))
-            .filter(item -> filterExamName == null || sameText(item.getExamName(), filterExamName))
-            .filter(item -> filterActivityType == null || sameText(item.getActivityType(), filterActivityType))
-            .filter(item -> filterTimeLimit == null || filterTimeLimit.equals(item.getTimeLimit()))
-            .filter(item -> {
-                String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
-                return normalizedDeadline.isBlank() || itemDeadline.equals(normalizedDeadline);
-            })
-            .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())))
-            .toList();
+        DistributedExam source = null;
+        if (distributionId != null) {
+            source = distributedExamRepository.findById(distributionId)
+                .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+                .filter(item -> sameText(item.getStudentEmail(), normalizedStudentEmail))
+                .orElse(null);
+        }
 
-        if (strictMatches.isEmpty()) {
+        if (source == null) {
+            String normalizedDeadline = filterDeadline == null ? "" : filterDeadline.trim();
+            source = distributedExamRepository.findAll().stream()
+                .filter(item -> item != null)
+                .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+                .filter(item -> sameText(item.getStudentEmail(), normalizedStudentEmail))
+                .filter(item -> filterExamName == null || sameText(item.getExamName(), filterExamName))
+                .filter(item -> filterActivityType == null || sameText(item.getActivityType(), filterActivityType))
+                .filter(item -> filterTimeLimit == null || filterTimeLimit.equals(item.getTimeLimit()))
+                .filter(item -> {
+                    String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
+                    return normalizedDeadline.isBlank() || itemDeadline.equals(normalizedDeadline);
+                })
+                .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())))
+                .findFirst()
+                .orElse(null);
+        }
+
+        if (source == null) {
             redirectAttributes.addFlashAttribute("errorMessage", "No distributed quiz record found for this student.");
-            return "redirect:" + buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+            return "redirect:" + buildDistributionStudentsReturnTo(
+                id,
+                filterExamName,
+                filterActivityType,
+                filterTimeLimit,
+                filterDeadline,
+                distributionId);
         }
 
-        DistributedExam source = strictMatches.get(0);
         LocalDateTime newDeadlineAt;
         try {
             newDeadlineAt = resolveReopenDeadlineAt(reopenPreset, customDeadline);
         } catch (IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("errorMessage", exception.getMessage());
-            return "redirect:" + buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+            return "redirect:" + buildDistributionStudentsReturnTo(
+                id,
+                filterExamName,
+                filterActivityType,
+                filterTimeLimit,
+                filterDeadline,
+                source.getId());
         }
         String newDeadlineValue = newDeadlineAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
 
-        DistributedExam reopened = cloneForReopen(source, normalizedStudentEmail, newDeadlineValue, LocalDateTime.now());
-        distributedExamRepository.save(reopened);
+        applyReopenToExistingExam(source, newDeadlineValue, LocalDateTime.now());
+        distributedExamRepository.save(source);
 
         redirectAttributes.addFlashAttribute("successMessage",
             "Quiz reopened for " + normalizedStudentEmail + " until " + newDeadlineAt.format(DEADLINE_DISPLAY_FORMAT) + ".");
-        return "redirect:" + buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, newDeadlineValue);
+        return "redirect:" + buildDistributionStudentsReturnTo(
+            id,
+            source.getExamName(),
+            source.getActivityType(),
+            source.getTimeLimit(),
+            newDeadlineValue,
+            source.getId());
     }
 
     @GetMapping("/subject-classroom/{id}/distribution-students/reopen")
@@ -1717,13 +1895,21 @@ public class TeacherController {
                                                      @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
                                                      @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
                                                      @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                                     @RequestParam(name = "distributionId", required = false) Long distributionId,
                                                      RedirectAttributes redirectAttributes) {
         redirectAttributes.addFlashAttribute("errorMessage", "Use the Re-open button to submit a custom retake schedule.");
-        return "redirect:" + buildDistributionStudentsReturnTo(id, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+        return "redirect:" + buildDistributionStudentsReturnTo(
+            id,
+            filterExamName,
+            filterActivityType,
+            filterTimeLimit,
+            filterDeadline,
+            distributionId);
     }
 
     @PostMapping("/subject-classroom/{id}/distributed-exams/reopen")
     public String reopenDistributedQuizBatch(@PathVariable("id") Long id,
+                                             @RequestParam(name = "distributionId", required = false) Long distributionId,
                                              @RequestParam("examName") String examName,
                                              @RequestParam("activityType") String activityType,
                                              @RequestParam("timeLimit") Integer timeLimit,
@@ -1752,21 +1938,30 @@ public class TeacherController {
             return "redirect:/teacher/subject-classroom/" + id + "/distributed-exams";
         }
 
-        String normalizedDeadline = deadline == null ? "" : deadline.trim();
-        List<DistributedExam> matchingBatch = distributedExamRepository.findAll().stream()
-            .filter(item -> item != null)
-            .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
-            .filter(item -> sameText(item.getExamName(), examName))
-            .filter(item -> sameText(item.getActivityType(), activityType))
-            .filter(item -> timeLimit != null && timeLimit.equals(item.getTimeLimit()))
-            .filter(item -> {
-                String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
-                return itemDeadline.equals(normalizedDeadline);
-            })
-            .filter(item -> !item.isSubmitted())
-            .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())))
-            .toList();
+        List<DistributedExam> matchingBatch;
+        if (distributionId != null) {
+            matchingBatch = distributedExamRepository.findById(distributionId)
+                .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+                .filter(item -> !item.isSubmitted())
+                .stream()
+                .toList();
+        } else {
+            String normalizedDeadline = deadline == null ? "" : deadline.trim();
+            matchingBatch = distributedExamRepository.findAll().stream()
+                .filter(item -> item != null)
+                .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+                .filter(item -> sameText(item.getExamName(), examName))
+                .filter(item -> sameText(item.getActivityType(), activityType))
+                .filter(item -> timeLimit != null && timeLimit.equals(item.getTimeLimit()))
+                .filter(item -> {
+                    String itemDeadline = item.getDeadline() == null ? "" : item.getDeadline().trim();
+                    return itemDeadline.equals(normalizedDeadline);
+                })
+                .filter(item -> !item.isSubmitted())
+                .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+        }
 
         if (matchingBatch.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "No missed or pending students found for this quiz batch.");
@@ -1785,8 +1980,8 @@ public class TeacherController {
         String newDeadlineValue = newDeadlineAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
         int reopenedCount = 0;
         for (DistributedExam source : latestByStudent.values()) {
-            DistributedExam reopened = cloneForReopen(source, source.getStudentEmail(), newDeadlineValue, LocalDateTime.now());
-            distributedExamRepository.save(reopened);
+            applyReopenToExistingExam(source, newDeadlineValue, LocalDateTime.now());
+            distributedExamRepository.save(source);
             reopenedCount++;
         }
 
@@ -1819,36 +2014,24 @@ public class TeacherController {
         }
     }
 
-    private DistributedExam cloneForReopen(DistributedExam source,
-                                           String studentEmail,
+    private void applyReopenToExistingExam(DistributedExam target,
                                            String deadlineValue,
                                            LocalDateTime distributedAt) {
-        DistributedExam reopened = new DistributedExam();
-        reopened.setStudentEmail(studentEmail == null ? "" : studentEmail.trim());
-        reopened.setExamId(source.getExamId());
-        reopened.setSubject(source.getSubject());
-        reopened.setExamName(source.getExamName());
-        reopened.setActivityType(source.getActivityType());
-        if (source.getTimeLimit() != null) {
-            reopened.setTimeLimit(source.getTimeLimit());
-        } else {
-            reopened.setTimeLimit(60);
+        if (target == null) {
+            return;
         }
-        reopened.setQuestionsJson(source.getQuestionsJson());
-        reopened.setDifficultiesJson(source.getDifficultiesJson());
-        reopened.setAnswerKeyJson(source.getAnswerKeyJson());
-        reopened.setQuestionIndexesJson(source.getQuestionIndexesJson());
-        reopened.setDeadline(deadlineValue == null ? "" : deadlineValue);
-        reopened.setDistributedAt(distributedAt == null ? LocalDateTime.now() : distributedAt);
-        reopened.setSubmitted(false);
-        return reopened;
+
+        target.setDeadline(deadlineValue == null ? "" : deadlineValue);
+        target.setDistributedAt(distributedAt == null ? LocalDateTime.now() : distributedAt);
+        target.setSubmitted(false);
     }
 
     private String buildDistributionStudentsReturnTo(Long subjectId,
                                                      String filterExamName,
                                                      String filterActivityType,
                                                      Integer filterTimeLimit,
-                                                     String filterDeadline) {
+                                                     String filterDeadline,
+                                                     Long distributionId) {
         StringBuilder target = new StringBuilder("/teacher/subject-classroom/")
             .append(subjectId)
             .append("/distribution-students");
@@ -1860,6 +2043,9 @@ public class TeacherController {
             query.add("filterTimeLimit=" + filterTimeLimit);
         }
         appendQueryParam(query, "filterDeadline", filterDeadline);
+        if (distributionId != null) {
+            query.add("distributionId=" + distributionId);
+        }
 
         if (!query.isEmpty()) {
             target.append("?").append(String.join("&", query));
@@ -1896,6 +2082,7 @@ public class TeacherController {
 
     @GetMapping("/grade/{id}")
     public String gradeSubmission(@PathVariable("id") Long id,
+                                  @RequestParam(name = "returnTo", required = false) String returnTo,
                                   Model model,
                                   Principal principal,
                                   RedirectAttributes redirectAttributes) {
@@ -1943,6 +2130,7 @@ public class TeacherController {
         model.addAttribute("currentManualScore", currentManualScore);
         model.addAttribute("textInputCount", textInputCount);
         model.addAttribute("maxManualScore", maxManualScore);
+        model.addAttribute("returnTo", resolveTeacherReturnTo(returnTo, "/teacher/view-result/" + submission.getId()));
         return "teacher-grade-exam";
     }
 
@@ -2019,7 +2207,8 @@ public class TeacherController {
             redirectAttributes.addFlashAttribute("successMessage", "Grade finalized. Result remains hidden until release.");
         }
 
-        return "redirect:/teacher/view-result/" + submission.getId();
+        String returnTo = resolveTeacherReturnTo(formData.get("returnTo"), "/teacher/subjects");
+        return "redirect:/teacher/view-result/" + submission.getId() + buildReturnToQuery(returnTo);
     }
 
     @PostMapping("/toggle-result-release/{id}")
@@ -2031,12 +2220,22 @@ public class TeacherController {
                                       @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
                                       @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
                                       @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                      @RequestParam(name = "distributionId", required = false) Long distributionId,
                                       Principal principal,
                                       RedirectAttributes redirectAttributes) {
         Optional<ExamSubmission> submissionOpt = examSubmissionRepository.findById(id);
         if (submissionOpt.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Submission not found.");
-            return buildReleaseRedirect(redirectTo, id, returnTo, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+            return buildReleaseRedirect(
+                redirectTo,
+                id,
+                returnTo,
+                subjectId,
+                filterExamName,
+                filterActivityType,
+                filterTimeLimit,
+                filterDeadline,
+                distributionId);
         }
 
         ExamSubmission submission = submissionOpt.get();
@@ -2049,7 +2248,16 @@ public class TeacherController {
         if (!isCurrentlyReleased && hasOpenEndedQuestions(submission) && !submission.isGraded()) {
             redirectAttributes.addFlashAttribute("errorMessage",
                 "Complete open-ended grading first before releasing this result.");
-            return buildReleaseRedirect(redirectTo, id, returnTo, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+            return buildReleaseRedirect(
+                redirectTo,
+                id,
+                returnTo,
+                subjectId,
+                filterExamName,
+                filterActivityType,
+                filterTimeLimit,
+                filterDeadline,
+                distributionId);
         }
 
         submission.setResultsReleased(!isCurrentlyReleased);
@@ -2060,7 +2268,16 @@ public class TeacherController {
             submission.isResultsReleased()
                 ? "Result released to student."
                 : "Result hidden from student.");
-        return buildReleaseRedirect(redirectTo, id, returnTo, subjectId, filterExamName, filterActivityType, filterTimeLimit, filterDeadline);
+        return buildReleaseRedirect(
+            redirectTo,
+            id,
+            returnTo,
+            subjectId,
+            filterExamName,
+            filterActivityType,
+            filterTimeLimit,
+            filterDeadline,
+            distributionId);
     }
 
     @GetMapping("/profile")
@@ -2081,56 +2298,38 @@ public class TeacherController {
         sorted.sort(Comparator.comparing(DistributedExam::getDistributedAt,
             Comparator.nullsLast(Comparator.reverseOrder())));
 
-        Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
+        List<Map<String, Object>> summaryRows = new ArrayList<>();
         for (DistributedExam distributedExam : sorted) {
             if (distributedExam == null || distributedExam.getExamName() == null || distributedExam.getExamName().isBlank()) {
                 continue;
             }
 
             String deadlineRaw = distributedExam.getDeadline() == null ? "" : distributedExam.getDeadline();
-            String groupKey = distributedExam.getExamName() + "|"
-                + String.valueOf(distributedExam.getActivityType()) + "|"
-                + String.valueOf(distributedExam.getTimeLimit()) + "|"
-                + deadlineRaw;
+            Map<String, Object> row = new HashMap<>();
+            Integer safeTimeLimit = distributedExam.getTimeLimit();
+            int submittedCount = distributedExam.isSubmitted() ? 1 : 0;
+            int assignedCount = 1;
+            int notSubmitted = assignedCount - submittedCount;
 
-            Map<String, Object> row = grouped.computeIfAbsent(groupKey, key -> {
-                Map<String, Object> created = new HashMap<>();
-                Integer safeTimeLimit = distributedExam.getTimeLimit();
-                created.put("examName", distributedExam.getExamName());
-                created.put("subject", distributedExam.getSubject() == null ? "" : distributedExam.getSubject());
-                created.put("activityType", distributedExam.getActivityType() == null ? "Quiz" : distributedExam.getActivityType());
-                created.put("timeLimit", safeTimeLimit != null ? safeTimeLimit : 60);
-                created.put("deadline", formatDeadline(deadlineRaw));
-                created.put("filterExamName", distributedExam.getExamName());
-                created.put("filterActivityType", distributedExam.getActivityType());
-                created.put("filterTimeLimit", distributedExam.getTimeLimit());
-                created.put("filterDeadline", deadlineRaw == null ? "" : deadlineRaw);
-                created.put("assignedCount", 0);
-                created.put("submittedCount", 0);
-                created.put("notSubmittedCount", 0);
-                return created;
-            });
-
-            int assigned = (int) row.getOrDefault("assignedCount", 0) + 1;
-            row.put("assignedCount", assigned);
-
-            if (distributedExam.isSubmitted()) {
-                int submittedCount = (int) row.getOrDefault("submittedCount", 0) + 1;
-                row.put("submittedCount", submittedCount);
-            }
-        }
-
-        for (Map<String, Object> row : grouped.values()) {
-            int assigned = (int) row.getOrDefault("assignedCount", 0);
-            int submitted = (int) row.getOrDefault("submittedCount", 0);
-            int notSubmitted = Math.max(0, assigned - submitted);
+            row.put("distributionId", distributedExam.getId());
+            row.put("examName", distributedExam.getExamName());
+            row.put("subject", distributedExam.getSubject() == null ? "" : distributedExam.getSubject());
+            row.put("activityType", distributedExam.getActivityType() == null ? "Quiz" : distributedExam.getActivityType());
+            row.put("timeLimit", safeTimeLimit != null ? safeTimeLimit : 60);
+            row.put("deadline", formatDeadline(deadlineRaw));
+            row.put("filterExamName", distributedExam.getExamName());
+            row.put("filterActivityType", distributedExam.getActivityType());
+            row.put("filterTimeLimit", distributedExam.getTimeLimit());
+            row.put("filterDeadline", deadlineRaw == null ? "" : deadlineRaw);
+            row.put("assignedCount", assignedCount);
+            row.put("submittedCount", submittedCount);
             row.put("notSubmittedCount", notSubmitted);
 
-            boolean completed = assigned > 0 && submitted >= assigned;
+            boolean completed = submittedCount >= assignedCount;
             LocalDateTime deadlineAt = parseDeadlineValue(String.valueOf(row.getOrDefault("filterDeadline", "")));
             boolean overdue = !completed && notSubmitted > 0 && deadlineAt != null && LocalDateTime.now().isAfter(deadlineAt);
-            boolean ongoing = !completed && !overdue && submitted > 0;
-            boolean waiting = !completed && !overdue && submitted == 0;
+            boolean ongoing = false;
+            boolean waiting = !completed && !overdue;
 
             row.put("completed", completed);
             row.put("overdue", overdue);
@@ -2143,16 +2342,18 @@ public class TeacherController {
             } else if (overdue) {
                 row.put("statusLabel", "Overdue");
                 row.put("statusClass", "bg-danger");
-            } else if (submitted > 0) {
+            } else if (submittedCount > 0) {
                 row.put("statusLabel", "Ongoing");
                 row.put("statusClass", "bg-primary");
             } else {
                 row.put("statusLabel", "Waiting for submissions");
                 row.put("statusClass", "bg-secondary");
             }
+
+            summaryRows.add(row);
         }
 
-        return new ArrayList<>(grouped.values());
+        return summaryRows;
     }
 
     private String formatDeadline(String deadlineRaw) {
@@ -2263,6 +2464,79 @@ public class TeacherController {
         }
     }
 
+    private ExamSubmission findLatestSubmissionForDistributedExam(DistributedExam distributedExam) {
+        if (distributedExam == null
+            || distributedExam.getStudentEmail() == null
+            || distributedExam.getStudentEmail().isBlank()
+            || distributedExam.getExamName() == null
+            || distributedExam.getExamName().isBlank()
+            || distributedExam.getSubject() == null
+            || distributedExam.getSubject().isBlank()) {
+            return null;
+        }
+
+        List<ExamSubmission> candidates = examSubmissionRepository
+            .findByStudentEmailAndExamNameAndSubject(
+                distributedExam.getStudentEmail(),
+                distributedExam.getExamName(),
+                distributedExam.getSubject());
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        Long distributionId = distributedExam.getId();
+        if (distributionId != null) {
+            Optional<ExamSubmission> exactMatch = candidates.stream()
+                .filter(submission -> distributionId.equals(extractSubmissionDistributedExamId(submission)))
+                .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+            if (exactMatch.isPresent()) {
+                return exactMatch.get();
+            }
+        }
+
+        String distributionDeadline = distributedExam.getDeadline() == null ? "" : distributedExam.getDeadline().trim();
+        if (!distributionDeadline.isBlank()) {
+            Optional<ExamSubmission> deadlineMatch = candidates.stream()
+                .filter(submission -> sameText(extractSubmissionDeadline(submission), distributionDeadline))
+                .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+            if (deadlineMatch.isPresent()) {
+                return deadlineMatch.get();
+            }
+        }
+
+        if (!distributedExam.isSubmitted()) {
+            return null;
+        }
+
+        return candidates.stream()
+            .max(Comparator.comparing(ExamSubmission::getSubmittedAt,
+                Comparator.nullsLast(Comparator.naturalOrder())))
+            .orElse(null);
+    }
+
+    private Long extractSubmissionDistributedExamId(ExamSubmission submission) {
+        if (submission == null) {
+            return null;
+        }
+        Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
+        Object raw = payload.get("distributedExamId");
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        return raw == null ? null : parseLongSafe(String.valueOf(raw));
+    }
+
+    private String extractSubmissionDeadline(ExamSubmission submission) {
+        if (submission == null) {
+            return "";
+        }
+        Map<String, Object> payload = parseFlexibleMapJson(submission.getAnswerDetailsJson());
+        Object rawDeadline = payload.get("deadline");
+        return rawDeadline == null ? "" : String.valueOf(rawDeadline).trim();
+    }
+
     private String buildReleaseRedirect(String redirectTo,
                                         Long submissionId,
                                         String returnTo,
@@ -2270,7 +2544,8 @@ public class TeacherController {
                                         String filterExamName,
                                         String filterActivityType,
                                         Integer filterTimeLimit,
-                                        String filterDeadline) {
+                                        String filterDeadline,
+                                        Long distributionId) {
         if ("detail".equalsIgnoreCase(redirectTo) && submissionId != null) {
             return "redirect:/teacher/view-result/" + submissionId
                 + buildReturnToQuery(resolveTeacherReturnTo(returnTo, null));
@@ -2288,6 +2563,9 @@ public class TeacherController {
                 query.add("filterTimeLimit=" + filterTimeLimit);
             }
             appendQueryParam(query, "filterDeadline", filterDeadline);
+            if (distributionId != null) {
+                query.add("distributionId=" + distributionId);
+            }
 
             if (!query.isEmpty()) {
                 target.append("?").append(String.join("&", query));
@@ -2517,6 +2795,45 @@ public class TeacherController {
         return selected;
     }
 
+    private List<Integer> buildUniqueQuestionOrder(List<Integer> baseIndexes, Set<String> usedOrders) {
+        if (baseIndexes == null || baseIndexes.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Integer> candidate = new ArrayList<>(baseIndexes);
+        fisherYatesService.shuffle(candidate);
+        if (usedOrders == null) {
+            return candidate;
+        }
+
+        String signature = candidate.toString();
+        if (usedOrders.add(signature)) {
+            return candidate;
+        }
+
+        int maxAttempts = Math.max(4, baseIndexes.size() * 2);
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            fisherYatesService.shuffle(candidate);
+            signature = candidate.toString();
+            if (usedOrders.add(signature)) {
+                return candidate;
+            }
+        }
+
+        for (int shift = 1; shift < baseIndexes.size(); shift++) {
+            List<Integer> rotated = new ArrayList<>(baseIndexes.size());
+            for (int index = 0; index < baseIndexes.size(); index++) {
+                rotated.add(baseIndexes.get((index + shift) % baseIndexes.size()));
+            }
+            signature = rotated.toString();
+            if (usedOrders.add(signature)) {
+                return rotated;
+            }
+        }
+
+        return new ArrayList<>(baseIndexes);
+    }
+
     private List<Integer> takeFromPool(List<Integer> pool, int count) {
         if (count <= 0 || pool.isEmpty()) {
             return new ArrayList<>();
@@ -2585,7 +2902,7 @@ public class TeacherController {
 
                     if (questionColumn < 0 || answerColumn < 0 || choiceColumns.isEmpty()) {
                         throw new IllegalArgumentException(
-                            "Unsupported CSV header. Use: Difficulty,Question_Text,Choice_1...Choice_N,Correct_Answer");
+                            "Unsupported CSV header. Use: Difficulty,Question_Text,Choice_A...Choice_Z,Correct_Answer");
                     }
 
                     continue;
@@ -2614,7 +2931,14 @@ public class TeacherController {
                     }
                 }
 
-                boolean openEnded = choices.isEmpty();
+                String parsedAnswer = "";
+                if (answerColumn >= 0 && answerColumn < columns.size()) {
+                    parsedAnswer = normalizeQuestionHtml(normalizeMathSymbols(columns.get(answerColumn)));
+                    parsedAnswer = normalizeCsvCorrectAnswer(parsedAnswer, choices);
+                }
+
+                // Open-ended when no choices are provided OR when Correct_Answer is blank.
+                boolean openEnded = choices.isEmpty() || parsedAnswer.isBlank();
 
                 if (openEnded && !questionText.startsWith("[TEXT_INPUT]")) {
                     questionText = "[TEXT_INPUT]" + questionText;
@@ -2623,13 +2947,10 @@ public class TeacherController {
                 question.put("question", questionText);
                 question.put("choices", openEnded ? new ArrayList<>() : choices);
 
-                if (answerColumn >= 0 && answerColumn < columns.size()) {
-                    String parsedAnswer = normalizeQuestionHtml(normalizeMathSymbols(columns.get(answerColumn)));
-                    if (openEnded && parsedAnswer.isBlank()) {
-                        parsedAnswer = "MANUAL_GRADE";
-                    }
-                    question.put("answer", parsedAnswer);
+                if (openEnded && parsedAnswer.isBlank()) {
+                    parsedAnswer = "MANUAL_GRADE";
                 }
+                question.put("answer", parsedAnswer);
 
                 if (difficultyColumn >= 0 && difficultyColumn < columns.size()) {
                     String normalizedDifficulty = normalizeDifficulty(columns.get(difficultyColumn));
@@ -2843,6 +3164,114 @@ public class TeacherController {
         return choiceValue
             .replaceFirst("(?i)^\\s*(?:\\(?[a-z0-9]{1,3}\\)?[.)-])\\s*", "")
             .trim();
+    }
+
+    private String normalizeCsvCorrectAnswer(String rawAnswer, List<String> choices) {
+        if (rawAnswer == null || rawAnswer.isBlank()) {
+            return "";
+        }
+
+        String cleaned = normalizeQuestionHtml(rawAnswer);
+        if (cleaned.isBlank()) {
+            return "";
+        }
+        if ("MANUAL_GRADE".equalsIgnoreCase(cleaned)) {
+            return "MANUAL_GRADE";
+        }
+
+        int choiceCount = choices == null ? 0 : choices.size();
+        if (choiceCount <= 0) {
+            return cleaned;
+        }
+
+        Integer index = parseCsvChoiceIndex(cleaned, choiceCount);
+        if (index != null) {
+            return generateChoiceLabel(index);
+        }
+
+        for (int i = 0; i < choiceCount; i++) {
+            String choiceText = normalizeQuestionHtml(String.valueOf(choices.get(i)));
+            if (!choiceText.isBlank() && normalize(choiceText).equals(normalize(cleaned))) {
+                return generateChoiceLabel(i);
+            }
+        }
+
+        return cleaned;
+    }
+
+    private Integer parseCsvChoiceIndex(String rawAnswer, int choiceCount) {
+        if (rawAnswer == null || rawAnswer.isBlank() || choiceCount <= 0) {
+            return null;
+        }
+
+        String candidate = rawAnswer.trim().toUpperCase();
+
+        Matcher choiceTokenMatcher = Pattern.compile("^(?:CHOICE|OPTION)\\s*[_-]?\\s*([A-Z]{1,3}|\\d{1,4})$").matcher(candidate);
+        if (choiceTokenMatcher.matches()) {
+            String token = choiceTokenMatcher.group(1);
+            int index;
+            if (token != null && token.matches("\\d{1,4}")) {
+                int parsed = parseIntSafe(token, 0);
+                index = parsed - 1;
+            } else {
+                index = choiceLabelToZeroBasedIndex(token);
+            }
+            if (index >= 0 && index < choiceCount) {
+                return index;
+            }
+        }
+
+        Matcher numericMatcher = Pattern.compile("^\\(?\\s*(\\d{1,4})\\s*\\)?[.)-]?$").matcher(candidate);
+        if (numericMatcher.matches()) {
+            int parsed = parseIntSafe(numericMatcher.group(1), 0);
+            int index = parsed - 1;
+            if (index >= 0 && index < choiceCount) {
+                return index;
+            }
+        }
+
+        Matcher labelMatcher = Pattern.compile("^\\(?\\s*([A-Z]{1,3})\\s*\\)?[.)-]?$").matcher(candidate);
+        if (labelMatcher.matches()) {
+            int index = choiceLabelToZeroBasedIndex(labelMatcher.group(1));
+            if (index >= 0 && index < choiceCount) {
+                return index;
+            }
+        }
+
+        return null;
+    }
+
+    private int choiceLabelToZeroBasedIndex(String rawLabel) {
+        if (rawLabel == null || rawLabel.isBlank()) {
+            return -1;
+        }
+
+        String upper = rawLabel.trim().toUpperCase();
+        int value = 0;
+        for (int index = 0; index < upper.length(); index++) {
+            char ch = upper.charAt(index);
+            if (ch < 'A' || ch > 'Z') {
+                return -1;
+            }
+            value = (value * 26) + (ch - 'A' + 1);
+        }
+
+        return value - 1;
+    }
+
+    private String generateChoiceLabel(int zeroBasedIndex) {
+        if (zeroBasedIndex < 0) {
+            return "A";
+        }
+
+        int current = zeroBasedIndex;
+        StringBuilder label = new StringBuilder();
+        do {
+            int remainder = current % 26;
+            label.append((char) ('A' + remainder));
+            current = (current / 26) - 1;
+        } while (current >= 0);
+        return label.reverse().toString();
     }
 
     private List<String> splitCsvLine(String line) {
@@ -3374,7 +3803,10 @@ public class TeacherController {
             return "";
         }
 
-        String normalized = text;
+        String normalized = HtmlUtils.htmlUnescape(text);
+        if (normalized == null) {
+            normalized = text;
+        }
 
         Map<String, String> entities = Map.ofEntries(
             Map.entry("&plusmn;", "±"),
@@ -3407,26 +3839,34 @@ public class TeacherController {
             normalized = normalized.replace(entry.getKey(), entry.getValue());
         }
 
-        Pattern decimalEntity = Pattern.compile("&#(\\d+);");
-        Matcher decimalMatcher = decimalEntity.matcher(normalized);
-        StringBuffer decimalBuffer = new StringBuffer();
-        while (decimalMatcher.find()) {
-            int codePoint = Integer.parseInt(decimalMatcher.group(1));
-            decimalMatcher.appendReplacement(decimalBuffer, Matcher.quoteReplacement(new String(Character.toChars(codePoint))));
-        }
-        decimalMatcher.appendTail(decimalBuffer);
-        normalized = decimalBuffer.toString();
+        normalized = decodeNumericHtmlEntitiesSafely(normalized, Pattern.compile("&#(\\d+);"), 10);
+        normalized = decodeNumericHtmlEntitiesSafely(normalized, Pattern.compile("&#x([0-9a-fA-F]+);"), 16);
 
-        Pattern hexEntity = Pattern.compile("&#x([0-9a-fA-F]+);");
-        Matcher hexMatcher = hexEntity.matcher(normalized);
-        StringBuffer hexBuffer = new StringBuffer();
-        while (hexMatcher.find()) {
-            int codePoint = Integer.parseInt(hexMatcher.group(1), 16);
-            hexMatcher.appendReplacement(hexBuffer, Matcher.quoteReplacement(new String(Character.toChars(codePoint))));
-        }
-        hexMatcher.appendTail(hexBuffer);
+        return normalizeEquationArtifacts(normalized.trim());
+    }
 
-        return normalizeEquationArtifacts(hexBuffer.toString().trim());
+    private String decodeNumericHtmlEntitiesSafely(String input, Pattern pattern, int radix) {
+        if (input == null || input.isBlank()) {
+            return "";
+        }
+
+        Matcher matcher = pattern.matcher(input);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            String replacement = matcher.group(0);
+            try {
+                int codePoint = Integer.parseInt(matcher.group(1), radix);
+                if (Character.isValidCodePoint(codePoint)
+                    && !(codePoint >= Character.MIN_SURROGATE && codePoint <= Character.MAX_SURROGATE)) {
+                    replacement = new String(Character.toChars(codePoint));
+                }
+            } catch (Exception ignored) {
+                // Keep original entity text when parsing fails.
+            }
+            matcher.appendReplacement(output, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(output);
+        return output.toString();
     }
 
     private String normalizeEquationArtifacts(String text) {
@@ -3453,85 +3893,104 @@ public class TeacherController {
             .replaceAll("\\n{3,}", "\\n\\n");
 
         normalized = normalized
-            .replace("×", "\\times")
-            .replace("÷", "\\div")
-            .replace("≤", "\\le")
-            .replace("≥", "\\ge")
-            .replace("≠", "\\ne")
-            .replace("≈", "\\approx")
-            .replace("∞", "\\infty")
-            .replace("π", "\\pi")
-            .replace("α", "\\alpha")
-            .replace("β", "\\beta")
-            .replace("γ", "\\gamma")
-            .replace("Δ", "\\Delta")
-            .replace("θ", "\\theta")
-            .replace("∑", "\\sum")
-            .replace("∏", "\\prod")
-            .replace("√", "\\sqrt")
-            .replace("∫", "\\int");
+            .replace("\\times", "×")
+            .replace("\\div", "÷")
+            .replace("\\le", "≤")
+            .replace("\\ge", "≥")
+            .replace("\\ne", "≠")
+            .replace("\\approx", "≈")
+            .replace("\\infty", "∞")
+            .replace("\\pi", "π")
+            .replace("\\alpha", "α")
+            .replace("\\beta", "β")
+            .replace("\\gamma", "γ")
+            .replace("\\Delta", "Δ")
+            .replace("\\theta", "θ")
+            .replace("\\sum", "∑")
+            .replace("\\prod", "∏")
+            .replace("\\sqrt", "√")
+            .replace("\\int", "∫");
 
-        StringBuilder rebuilt = new StringBuilder();
-        for (int index = 0; index < normalized.length(); index++) {
-            char ch = normalized.charAt(index);
-            String superscript = toSuperscriptToken(ch);
-            if (superscript != null) {
-                rebuilt.append(superscript);
-                continue;
-            }
-
-            String subscript = toSubscriptToken(ch);
-            if (subscript != null) {
-                rebuilt.append(subscript);
-                continue;
-            }
-
-            rebuilt.append(ch);
-        }
-
-        return rebuilt.toString().trim();
+        return decodeSuperscriptAndSubscriptTokens(normalized).trim();
     }
 
-    private String toSuperscriptToken(char value) {
+    private String decodeSuperscriptAndSubscriptTokens(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        StringBuilder rebuilt = new StringBuilder();
+        for (int index = 0; index < value.length(); index++) {
+            if (value.startsWith("^\\circ", index)) {
+                rebuilt.append('\u00B0');
+                index += "^\\circ".length() - 1;
+                continue;
+            }
+
+            char current = value.charAt(index);
+            if (current == '^' && index + 1 < value.length()) {
+                Character superscript = toSuperscriptChar(value.charAt(index + 1));
+                if (superscript != null) {
+                    rebuilt.append(superscript);
+                    index++;
+                    continue;
+                }
+            }
+
+            if (current == '_' && index + 1 < value.length()) {
+                Character subscript = toSubscriptChar(value.charAt(index + 1));
+                if (subscript != null) {
+                    rebuilt.append(subscript);
+                    index++;
+                    continue;
+                }
+            }
+
+            rebuilt.append(current);
+        }
+
+        return rebuilt.toString();
+    }
+
+    private Character toSuperscriptChar(char value) {
         return switch (value) {
-            case '\u00B0' -> "^\\circ";
-            case '\u00B9' -> "^1";
-            case '\u00B2' -> "^2";
-            case '\u00B3' -> "^3";
-            case '\u2070' -> "^0";
-            case '\u2074' -> "^4";
-            case '\u2075' -> "^5";
-            case '\u2076' -> "^6";
-            case '\u2077' -> "^7";
-            case '\u2078' -> "^8";
-            case '\u2079' -> "^9";
-            case '\u207A' -> "^+";
-            case '\u207B' -> "^-";
-            case '\u207C' -> "^=";
-            case '\u207D' -> "^(";
-            case '\u207E' -> "^)";
-            case '\u207F' -> "^n";
+            case '0' -> '\u2070';
+            case '1' -> '\u00B9';
+            case '2' -> '\u00B2';
+            case '3' -> '\u00B3';
+            case '4' -> '\u2074';
+            case '5' -> '\u2075';
+            case '6' -> '\u2076';
+            case '7' -> '\u2077';
+            case '8' -> '\u2078';
+            case '9' -> '\u2079';
+            case '+' -> '\u207A';
+            case '-' -> '\u207B';
+            case '=' -> '\u207C';
+            case '(' -> '\u207D';
+            case ')' -> '\u207E';
+            case 'n', 'N' -> '\u207F';
             default -> null;
         };
     }
 
-    private String toSubscriptToken(char value) {
+    private Character toSubscriptChar(char value) {
         return switch (value) {
-            case '\u2080' -> "_0";
-            case '\u2081' -> "_1";
-            case '\u2082' -> "_2";
-            case '\u2083' -> "_3";
-            case '\u2084' -> "_4";
-            case '\u2085' -> "_5";
-            case '\u2086' -> "_6";
-            case '\u2087' -> "_7";
-            case '\u2088' -> "_8";
-            case '\u2089' -> "_9";
-            case '\u208A' -> "_+";
-            case '\u208B' -> "_-";
-            case '\u208C' -> "_=";
-            case '\u208D' -> "_(";
-            case '\u208E' -> "_)";
+            case '0' -> '\u2080';
+            case '1' -> '\u2081';
+            case '2' -> '\u2082';
+            case '3' -> '\u2083';
+            case '4' -> '\u2084';
+            case '5' -> '\u2085';
+            case '6' -> '\u2086';
+            case '7' -> '\u2087';
+            case '8' -> '\u2088';
+            case '9' -> '\u2089';
+            case '+' -> '\u208A';
+            case '-' -> '\u208B';
+            case '=' -> '\u208C';
+            case '(' -> '\u208D';
+            case ')' -> '\u208E';
             default -> null;
         };
     }
