@@ -565,12 +565,28 @@ public class DepartmentAdminController {
                         teacher.setCampusName(AcademicCatalog.CAMPUS_NAME);
                         changed = true;
                     }
-                    if (!normalizedDepartment.equals(teacher.getDepartmentName())) {
+                    if (!teacher.getDepartmentName().equals(normalizedDepartment)) {
                         teacher.setDepartmentName(normalizedDepartment);
                         changed = true;
                     }
-                    if (!normalizedProgram.equals(teacher.getProgramName() == null ? "" : teacher.getProgramName())) {
-                        teacher.setProgramName(normalizedProgram);
+                    
+                    // Logic to handle multiple programs (comma-separated)
+                    String currentProgramsStr = teacher.getProgramName() == null ? "" : teacher.getProgramName();
+                    java.util.Set<String> programSet = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    if (!currentProgramsStr.isBlank()) {
+                        for (String p : currentProgramsStr.split(",")) {
+                            if (!p.isBlank()) {
+                                programSet.add(p.trim());
+                            }
+                        }
+                    }
+                    if (!normalizedProgram.isBlank()) {
+                        programSet.add(normalizedProgram);
+                    }
+                    String newProgramsStr = String.join(", ", programSet);
+                    
+                    if (!currentProgramsStr.equals(newProgramsStr)) {
+                        teacher.setProgramName(newProgramsStr);
                         changed = true;
                     }
                     if (!teacher.isEnabled()) {
@@ -756,6 +772,19 @@ public class DepartmentAdminController {
         boolean canManageImports = !selectedProgram.isBlank() && !"Unassigned Program".equalsIgnoreCase(selectedProgram);
         model.addAttribute("teacherOptions", canManageImports ? teacherOptions : new ArrayList<>());
         model.addAttribute("canManageImports", canManageImports);
+
+        List<User> programStudents = new ArrayList<>();
+        if (canManageImports) {
+             programStudents = userRepository.findAll().stream()
+                .filter(user -> user != null && user.getRole() == User.Role.STUDENT)
+                .filter(user -> selectedDepartment.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
+                .filter(user -> sameProgram(user.getProgramName(), selectedProgram))
+                .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        }
+        model.addAttribute("programTeachers", teacherOptions); // Reuse teacherOptions which is already filtered by program/department
+        model.addAttribute("programStudents", programStudents);
+
         model.addAttribute("search", search == null ? "" : search);
         model.addAttribute("page", safePage);
         model.addAttribute("size", safeSize);
@@ -968,12 +997,22 @@ public class DepartmentAdminController {
     }
 
     private boolean sameProgram(String left, String right) {
-        String leftValue = left == null ? "" : left.trim();
         String rightValue = right == null ? "" : right.trim();
-        if (leftValue.isBlank() && rightValue.isBlank()) {
+        if (rightValue.isBlank()) {
             return true;
         }
-        return leftValue.equalsIgnoreCase(rightValue);
+
+        String leftValue = left == null ? "" : left.trim();
+        if (leftValue.isBlank()) {
+            return false;
+        }
+
+        for (String prog : leftValue.split(",")) {
+            if (prog.trim().equalsIgnoreCase(rightValue)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<String> buildProgramOptionsForDepartment(String departmentName,
@@ -995,15 +1034,19 @@ public class DepartmentAdminController {
             addUniqueValue(options, catalogProgram);
         }
 
-        if (currentAdmin != null) {
-            addUniqueValue(options, currentAdmin.getProgramName());
+        if (currentAdmin != null && currentAdmin.getProgramName() != null) {
+            for (String p : currentAdmin.getProgramName().split(",")) {
+                addUniqueValue(options, p.trim());
+            }
         }
 
         for (User teacher : teachersInDepartment) {
-            if (teacher == null) {
+            if (teacher == null || teacher.getProgramName() == null) {
                 continue;
             }
-            addUniqueValue(options, teacher.getProgramName());
+            for (String p : teacher.getProgramName().split(",")) {
+                addUniqueValue(options, p.trim());
+            }
         }
 
         return options;
