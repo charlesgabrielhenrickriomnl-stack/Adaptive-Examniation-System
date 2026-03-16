@@ -61,10 +61,65 @@
 
             <div class="row g-3 align-items-start">
                 <div class="col-12 col-xl-4">
-                    <div class="card department-panel-card h-100" th:if="${canManageImports}">
+                    
+                    <div class="card department-panel-card mb-3" th:if="${canManageImports}">
+                        <div class="card-header fw-semibold department-panel-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-people-fill me-2"></i>Program Roster</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="accordion accordion-flush" id="rosterAccordion">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#teachersCollapse" aria-expanded="true">
+                                            <i class="bi bi-person-workspace me-2 text-muted"></i>Teachers 
+                                            <span class="badge bg-secondary ms-auto" th:text="${programTeachers.size()}">0</span>
+                                        </button>
+                                    </h2>
+                                    <div id="teachersCollapse" class="accordion-collapse collapse show" data-bs-parent="#rosterAccordion">
+                                        <div class="accordion-body p-0">
+                                            <div class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
+                                                <div class="list-group-item small" th:each="teacher : ${programTeachers}">
+                                                    <div class="fw-bold" th:text="${teacher.fullName != null && !#strings.isEmpty(teacher.fullName) ? teacher.fullName : teacher.email}">Name</div>
+                                                    <div class="text-muted" style="font-size: 0.75rem;" th:text="${teacher.email}">email</div>
+                                                    <div class="text-muted fst-italic mt-1" style="font-size: 0.7rem;" th:if="${teacher.programName != null && !#strings.isEmpty(teacher.programName)}" th:text="${teacher.programName}">Programs</div>
+                                                </div>
+                                                <div class="list-group-item small text-muted fst-italic py-3 text-center" th:if="${programTeachers.isEmpty()}">
+                                                    No teachers found.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#studentsCollapse" aria-expanded="false">
+                                            <i class="bi bi-people me-2 text-muted"></i>Students
+                                            <span class="badge bg-secondary ms-auto" th:text="${programStudents.size()}">0</span>
+                                        </button>
+                                    </h2>
+                                    <div id="studentsCollapse" class="accordion-collapse collapse" data-bs-parent="#rosterAccordion">
+                                        <div class="accordion-body p-0">
+                                            <div class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
+                                                <div class="list-group-item small" th:each="student : ${programStudents}">
+                                                    <div class="fw-bold" th:text="${student.fullName != null && !#strings.isEmpty(student.fullName) ? student.fullName : student.email}">Name</div>
+                                                    <div class="text-muted" style="font-size: 0.75rem;" th:text="${student.email}">email</div>
+                                                    <div class="text-muted fst-italic mt-1" style="font-size: 0.7rem;" th:if="${student.programName != null && !#strings.isEmpty(student.programName)}" th:text="${student.programName}">Programs</div>
+                                                </div>
+                                                <div class="list-group-item small text-muted fst-italic py-3 text-center" th:if="${programStudents.isEmpty()}">
+                                                    No students found.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card department-panel-card" th:if="${canManageImports}">
                         <div class="card-header fw-semibold department-panel-header">
                             <i class="bi bi-upload me-2"></i>
-                            <span th:text="'Manage Imports - ' + ${selectedProgram}">Manage Imports</span>
+                            <span th:text="'Manage Imports'">Manage Imports</span>
                         </div>
                         <div class="card-body">
                             <div class="row g-3">

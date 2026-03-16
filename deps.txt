@@ -1,0 +1,4 @@
+
+The following files have been resolved:
+   org.mockito:mockito-core:jar:5.17.0:test[36m -- module org.mockito[m
+
