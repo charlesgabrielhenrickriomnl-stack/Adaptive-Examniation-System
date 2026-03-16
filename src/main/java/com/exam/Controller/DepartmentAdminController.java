@@ -742,25 +742,122 @@ public class DepartmentAdminController {
         int to = Math.min(from + safeSize, total);
         List<Map<String, Object>> pagedQuizRows = from < to ? allQuizRows.subList(from, to) : new ArrayList<>();
 
+        model.addAttribute("departmentName", selectedDepartment.isBlank() ? "Department not set" : selectedDepartment);
+        model.addAttribute("selectedDepartment", selectedDepartment);
+        model.addAttribute("selectedProgram", selectedProgram);
+        model.addAttribute("selectedSubject", selectedSubject);
+        model.addAttribute("quizRows", pagedQuizRows);
+        List<User> teacherOptions = teachersInDepartment.stream()
+            .sorted(Comparator.comparing(
+                teacher -> teacher.getFullName() == null || teacher.getFullName().isBlank() ? teacher.getEmail() : teacher.getFullName(),
+                String.CASE_INSENSITIVE_ORDER
+            ))
+            .toList();
+        boolean canManageImports = !selectedProgram.isBlank() && !"Unassigned Program".equalsIgnoreCase(selectedProgram);
+        model.addAttribute("teacherOptions", canManageImports ? teacherOptions : new ArrayList<>());
+        model.addAttribute("canManageImports", canManageImports);
+        model.addAttribute("search", search == null ? "" : search);
+        model.addAttribute("page", safePage);
+        model.addAttribute("size", safeSize);
+        model.addAttribute("total", total);
+        model.addAttribute("totalPages", totalPages);
+        model.addAttribute("hasPrev", safePage > 0);
+        model.addAttribute("hasNext", safePage + 1 < totalPages);
+        return "department-admin-question-bank";
+    }
+
+    @GetMapping("/question-bank/quiz")
+    public String questionBankQuizDetail(@RequestParam(name = "departmentName", required = false) String departmentName,
+                                         @RequestParam(name = "programName", required = false) String programName,
+                                         @RequestParam(name = "sourceExamId", required = false) String sourceExamId,
+                                         @RequestParam(name = "sourceExamName", required = false) String sourceExamName,
+                                         @RequestParam(name = "subject", required = false) String subject,
+                                         @RequestParam(name = "search", required = false) String search,
+                                         @RequestParam(name = "page", defaultValue = "0") int page,
+                                         @RequestParam(name = "size", defaultValue = "15") int size,
+                                         Model model,
+                                         Principal principal) {
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        if (currentAdmin == null || currentAdmin.getRole() != User.Role.DEPARTMENT_ADMIN) {
+            return "redirect:/login";
+        }
+
         String selectedExamId = sourceExamId == null ? "" : sourceExamId.trim();
         String selectedExamName = sourceExamName == null ? "" : sourceExamName.trim();
-        List<QuestionBankItem> selectedQuizItems = scopedItems.stream()
-            .filter(item -> {
-                String itemExamId = item.getSourceExamId() == null ? "" : item.getSourceExamId().trim();
-                String itemExamName = item.getSourceExamName() == null ? "" : item.getSourceExamName().trim();
-                if (!selectedExamId.isBlank()) {
-                    return itemExamId.equalsIgnoreCase(selectedExamId);
+        if (selectedExamId.isBlank() && selectedExamName.isBlank()) {
+            return "redirect:/department-admin/question-bank";
+        }
+
+        String adminDepartment = currentAdmin.getDepartmentName() == null
+            ? ""
+            : currentAdmin.getDepartmentName().trim();
+        String requestedDepartment = departmentName == null ? "" : departmentName.trim();
+        final String selectedDepartment = sameDepartment(requestedDepartment, adminDepartment)
+            ? requestedDepartment
+            : adminDepartment;
+        String requestedProgram = programName == null ? "" : programName.trim();
+        boolean unassignedProgramFilter = "Unassigned Program".equalsIgnoreCase(requestedProgram);
+        final String selectedProgram = unassignedProgramFilter ? "Unassigned Program" : requestedProgram;
+        final String selectedSubject = subject == null ? "" : subject.trim();
+
+        List<User> teachersInDepartment = userRepository.findAll().stream()
+            .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
+            .filter(user -> selectedDepartment.isBlank()
+                || selectedDepartment.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
+            .filter(user -> {
+                if (selectedProgram.isBlank()) {
+                    return true;
                 }
-                if (!selectedExamName.isBlank()) {
-                    return itemExamName.equalsIgnoreCase(selectedExamName);
+
+                String teacherProgram = user.getProgramName() == null ? "" : user.getProgramName().trim();
+                if (unassignedProgramFilter) {
+                    return teacherProgram.isBlank();
                 }
-                return false;
+                return sameProgram(teacherProgram, selectedProgram);
             })
-            .sorted(Comparator.comparing(item -> {
-                Integer questionOrder = item.getQuestionOrder();
-                return questionOrder == null ? Integer.MAX_VALUE : questionOrder;
-            }))
             .toList();
+
+        Set<String> teacherEmailSetInScope = teachersInDepartment.stream()
+            .map(User::getEmail)
+            .filter(value -> value != null && !value.isBlank())
+            .map(this::normalizeEmail)
+            .collect(Collectors.toSet());
+
+        Map<String, User> teacherProfilesByEmail = new HashMap<>();
+        for (User teacher : teachersInDepartment) {
+            if (teacher != null && teacher.getEmail() != null) {
+                teacherProfilesByEmail.put(teacher.getEmail().trim().toLowerCase(), teacher);
+            }
+        }
+
+        List<QuestionBankItem> selectedQuizItems = selectedDepartment.isBlank()
+            ? new ArrayList<>()
+            : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+                .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), selectedDepartment))
+                .filter(item -> {
+                    if (selectedProgram.isBlank()) {
+                        return true;
+                    }
+                    if (item == null || item.getSourceTeacherEmail() == null || item.getSourceTeacherEmail().isBlank()) {
+                        return false;
+                    }
+                    return teacherEmailSetInScope.contains(normalizeEmail(item.getSourceTeacherEmail()));
+                })
+                .filter(item -> selectedSubject.isBlank() || selectedSubject.equalsIgnoreCase(item.getSubject() == null ? "" : item.getSubject().trim()))
+                .filter(item -> {
+                    String itemExamId = item.getSourceExamId() == null ? "" : item.getSourceExamId().trim();
+                    String itemExamName = item.getSourceExamName() == null ? "" : item.getSourceExamName().trim();
+                    if (!selectedExamId.isBlank()) {
+                        return itemExamId.equalsIgnoreCase(selectedExamId);
+                    }
+                    return itemExamName.equalsIgnoreCase(selectedExamName);
+                })
+                .sorted(Comparator.comparing(item -> {
+                    Integer questionOrder = item.getQuestionOrder();
+                    return questionOrder == null ? Integer.MAX_VALUE : questionOrder;
+                }))
+                .toList();
 
         Map<String, Object> selectedQuiz = null;
         List<Map<String, Object>> selectedQuizQuestions = new ArrayList<>();
@@ -801,28 +898,14 @@ public class DepartmentAdminController {
         model.addAttribute("selectedDepartment", selectedDepartment);
         model.addAttribute("selectedProgram", selectedProgram);
         model.addAttribute("selectedSubject", selectedSubject);
-        model.addAttribute("quizRows", pagedQuizRows);
         model.addAttribute("selectedQuiz", selectedQuiz);
         model.addAttribute("selectedQuizQuestions", selectedQuizQuestions);
         model.addAttribute("selectedExamId", selectedExamId);
         model.addAttribute("selectedExamName", selectedExamName);
-        List<User> teacherOptions = teachersInDepartment.stream()
-            .sorted(Comparator.comparing(
-                teacher -> teacher.getFullName() == null || teacher.getFullName().isBlank() ? teacher.getEmail() : teacher.getFullName(),
-                String.CASE_INSENSITIVE_ORDER
-            ))
-            .toList();
-        boolean canManageImports = !selectedProgram.isBlank() && !"Unassigned Program".equalsIgnoreCase(selectedProgram);
-        model.addAttribute("teacherOptions", canManageImports ? teacherOptions : new ArrayList<>());
-        model.addAttribute("canManageImports", canManageImports);
         model.addAttribute("search", search == null ? "" : search);
-        model.addAttribute("page", safePage);
-        model.addAttribute("size", safeSize);
-        model.addAttribute("total", total);
-        model.addAttribute("totalPages", totalPages);
-        model.addAttribute("hasPrev", safePage > 0);
-        model.addAttribute("hasNext", safePage + 1 < totalPages);
-        return "department-admin-question-bank";
+        model.addAttribute("page", Math.max(0, page));
+        model.addAttribute("size", Math.max(5, Math.min(size, 50)));
+        return "department-admin-question-bank-detail";
     }
 
     @GetMapping("/department-view")

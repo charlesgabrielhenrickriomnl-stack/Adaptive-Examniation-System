@@ -156,6 +156,72 @@ body.department-dashboard-page::after {
     font-weight: 500;
 }
 
+.department-program-banner {
+    border: 1px solid #e2cfb0;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.8), transparent 40%),
+        linear-gradient(140deg, rgba(255, 250, 243, 0.95), rgba(249, 239, 224, 0.9));
+    box-shadow: 0 14px 28px rgba(96, 61, 31, 0.14);
+    padding: 0.82rem 0.96rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.72rem;
+    flex-wrap: wrap;
+}
+
+.department-program-banner-main {
+    min-width: 0;
+}
+
+.department-title-icon-lg {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 20px rgba(84, 10, 27, 0.28);
+}
+
+.department-quiz-list {
+    padding: 0.8rem;
+    display: grid;
+    gap: 0.64rem;
+}
+
+.department-quiz-item {
+    border: 1px solid #e2cfb0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fffefb, #fef7ec);
+    padding: 0.64rem 0.72rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.68rem;
+    flex-wrap: wrap;
+}
+
+.department-quiz-item-title {
+    color: #60261d;
+    font-family: 'Sora', 'Space Grotesk', sans-serif;
+    font-size: 0.97rem;
+    line-height: 1.25;
+}
+
+.department-quiz-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.36rem;
+}
+
+.department-quiz-item .department-pill {
+    font-size: 0.72rem;
+    padding: 0.14rem 0.44rem;
+}
+
+.department-quiz-item .department-pill i {
+    font-size: 0.67rem;
+}
+
 .department-summary-card {
     border: 1px solid #e3ceb0;
     border-radius: 16px;
@@ -456,6 +522,23 @@ body.department-dashboard-page::after {
 }
 
 @media (max-width: 768px) {
+    .department-program-banner {
+        padding: 0.72rem 0.78rem;
+    }
+
+    .department-title-icon-lg {
+        width: 35px;
+        height: 35px;
+    }
+
+    .department-quiz-list {
+        padding: 0.62rem;
+    }
+
+    .department-quiz-item {
+        padding: 0.56rem 0.6rem;
+    }
+
     .department-hero {
         grid-template-columns: 1fr;
         gap: 0.75rem;

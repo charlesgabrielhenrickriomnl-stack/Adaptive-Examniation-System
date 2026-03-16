@@ -20,10 +20,10 @@
 
     <div class="teacher-content-wrapper">
         <div class="container py-4">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <div>
+            <div class="department-program-banner mb-3">
+                <div class="department-program-banner-main">
                     <h3 class="department-page-title mb-1">
-                        <span class="department-title-icon"><i class="bi bi-collection"></i></span>
+                        <span class="department-title-icon department-title-icon-lg"><i class="bi bi-collection"></i></span>
                         <span th:text="${(selectedProgram != null and !#strings.isEmpty(selectedProgram)) ? (selectedProgram + ' Quiz List') : ('Department Quiz List')}">Department Quiz List</span>
                     </h3>
                     <p class="department-page-subtitle mb-0"
@@ -43,8 +43,6 @@
                         <input type="hidden" name="subject" th:value="${selectedSubject}">
                         <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
                         <input type="hidden" name="programName" th:value="${selectedProgram}">
-                        <input type="hidden" name="sourceExamId" th:value="${selectedExamId}">
-                        <input type="hidden" name="sourceExamName" th:value="${selectedExamName}">
                         <div class="col-md-9">
                             <input type="text" class="form-control" name="search" th:value="${search}"
                                    placeholder="Search quiz, subject, or teacher...">
@@ -58,154 +56,94 @@
                 </div>
             </div>
 
-            <div class="card department-panel-card mb-3" th:if="${canManageImports}">
-                <div class="card-header fw-semibold department-panel-header">
-                    <i class="bi bi-upload me-2"></i>
-                    <span th:text="'Manage Imports - ' + ${selectedProgram}">Manage Imports</span>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-12 col-lg-6">
-                            <div class="department-import-box h-100">
-                                <form method="post" enctype="multipart/form-data" th:action="@{/department-admin/import-teachers}" class="department-import-form h-100 d-flex flex-column">
-                                    <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
-                                    <input type="hidden" name="programName" th:value="${selectedProgram}">
-                                    <label class="form-label mb-1">Import Teachers CSV</label>
-                                    <input type="file" class="form-control form-control-sm mb-2" name="teacherListFile" accept=".csv" required>
-                                    <button type="submit" class="btn btn-sm department-search-btn align-self-start mt-auto">
-                                        <i class="bi bi-person-plus me-1"></i>Import Teachers
-                                    </button>
-                                </form>
-                            </div>
+            <div class="row g-3 align-items-start">
+                <div class="col-12 col-xl-4">
+                    <div class="card department-panel-card h-100" th:if="${canManageImports}">
+                        <div class="card-header fw-semibold department-panel-header">
+                            <i class="bi bi-upload me-2"></i>
+                            <span th:text="'Manage Imports - ' + ${selectedProgram}">Manage Imports</span>
                         </div>
-                        <div class="col-12 col-lg-6">
-                            <div class="department-import-box h-100">
-                                <form method="post" enctype="multipart/form-data" th:action="@{/department-admin/import-students}" class="department-import-form h-100 d-flex flex-column">
-                                    <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
-                                    <input type="hidden" name="programName" th:value="${selectedProgram}">
-                                    <label class="form-label mb-1">Import Students CSV</label>
-                                    <select class="form-select form-select-sm mb-2" name="teacherEmail" required>
-                                        <option value="">Select Teacher</option>
-                                        <option th:each="teacher : ${teacherOptions}"
-                                                th:value="${teacher.email}"
-                                                th:text="${(teacher.fullName != null && !#strings.isEmpty(teacher.fullName) ? teacher.fullName : teacher.email) + ' (' + teacher.email + ')'}"></option>
-                                    </select>
-                                    <input type="file" class="form-control form-control-sm mb-2" name="studentListFile" accept=".csv" required>
-                                    <small class="text-muted mb-2" th:if="${teacherOptions == null || teacherOptions.isEmpty()}">Import teachers first for this program.</small>
-                                    <button type="submit" class="btn btn-sm department-search-btn align-self-start mt-auto" th:disabled="${teacherOptions == null || teacherOptions.isEmpty()}">
-                                        <i class="bi bi-people me-1"></i>Import Students
-                                    </button>
-                                </form>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <div class="department-import-box h-100">
+                                        <form method="post" enctype="multipart/form-data" th:action="@{/department-admin/import-teachers}" class="department-import-form h-100 d-flex flex-column">
+                                            <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
+                                            <input type="hidden" name="programName" th:value="${selectedProgram}">
+                                            <label class="form-label mb-1">Import Teachers CSV</label>
+                                            <input type="file" class="form-control form-control-sm mb-2" name="teacherListFile" accept=".csv" required>
+                                            <button type="submit" class="btn btn-sm department-search-btn align-self-start mt-auto">
+                                                <i class="bi bi-person-plus me-1"></i>Import Teachers
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="department-import-box h-100">
+                                        <form method="post" enctype="multipart/form-data" th:action="@{/department-admin/import-students}" class="department-import-form h-100 d-flex flex-column">
+                                            <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
+                                            <input type="hidden" name="programName" th:value="${selectedProgram}">
+                                            <label class="form-label mb-1">Import Students CSV</label>
+                                            <select class="form-select form-select-sm mb-2" name="teacherEmail" required>
+                                                <option value="">Select Teacher</option>
+                                                <option th:each="teacher : ${teacherOptions}"
+                                                        th:value="${teacher.email}"
+                                                        th:text="${(teacher.fullName != null && !#strings.isEmpty(teacher.fullName) ? teacher.fullName : teacher.email) + ' (' + teacher.email + ')'}"></option>
+                                            </select>
+                                            <input type="file" class="form-control form-control-sm mb-2" name="studentListFile" accept=".csv" required>
+                                            <small class="text-muted mb-2" th:if="${teacherOptions == null || teacherOptions.isEmpty()}">Import teachers first for this program.</small>
+                                            <button type="submit" class="btn btn-sm department-search-btn align-self-start mt-auto" th:disabled="${teacherOptions == null || teacherOptions.isEmpty()}">
+                                                <i class="bi bi-people me-1"></i>Import Students
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <div class="alert alert-warning small" th:if="${!canManageImports}">
-                Select a specific program to manage teacher/student imports.
-            </div>
-
-            <div class="card department-panel-card">
-                <div class="card-header d-flex justify-content-between align-items-center department-panel-header">
-                    <span class="fw-semibold"><i class="bi bi-journal-richtext me-2"></i>Saved Quiz List</span>
-                    <small class="text-muted" th:text="${total} + ' total quiz(es)'">0 total quiz(es)</small>
-                </div>
-                <div class="card-body p-0">
-                    <div th:if="${quizRows == null || quizRows.isEmpty()}" class="p-3 text-muted small">
-                        No saved quizzes found.
+                    <div class="alert alert-warning small mb-0" th:if="${!canManageImports}">
+                        Select a specific program to manage teacher/student imports.
                     </div>
-                    <div th:if="${quizRows != null && !quizRows.isEmpty()}" class="table-responsive">
-                        <table class="table table-sm table-hover align-middle mb-0 department-table">
-                            <thead class="table-light">
-                            <tr>
-                                <th>Quiz</th>
-                                <th>Subject</th>
-                                <th>Teacher</th>
-                                <th>Department</th>
-                                <th>Program</th>
-                                <th>Items</th>
-                                <th>Saved</th>
-                                <th></th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr th:each="quiz : ${quizRows}">
-                                <td>
-                                    <span class="fw-semibold" th:text="${quiz.sourceExamName}">Quiz Name</span>
-                                </td>
-                                <td th:text="${quiz.subject != null && !#strings.isEmpty(quiz.subject) ? quiz.subject : '-'}">Subject</td>
-                                <td th:text="${quiz.sourceTeacherEmail}">teacher@example.com</td>
-                                <td th:text="${quiz.sourceTeacherDepartment != null && !#strings.isEmpty(quiz.sourceTeacherDepartment) ? quiz.sourceTeacherDepartment : '-'}">-</td>
-                                <td th:text="${quiz.sourceTeacherProgram != null && !#strings.isEmpty(quiz.sourceTeacherProgram) ? quiz.sourceTeacherProgram : '-'}">-</td>
-                                <td><span class="badge bg-secondary" th:text="${quiz.questionCount}">0</span></td>
-                                <td>
-                                    <small class="text-muted"
-                                           th:text="${quiz.createdAt != null ? #temporals.format(quiz.createdAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</small>
-                                </td>
-                                <td class="text-end">
+                </div>
+                <div class="col-12 col-xl-8">
+                    <div class="card department-panel-card">
+                        <div class="card-header d-flex justify-content-between align-items-center department-panel-header">
+                            <span class="fw-semibold"><i class="bi bi-journal-richtext me-2"></i>Saved Quiz List</span>
+                            <small class="text-muted" th:text="${total} + ' total quiz(es)'">0 total quiz(es)</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <div th:if="${quizRows == null || quizRows.isEmpty()}" class="p-3 text-muted small">
+                                No saved quizzes found.
+                            </div>
+                            <div th:if="${quizRows != null && !quizRows.isEmpty()}" class="department-quiz-list">
+                                <div class="department-quiz-item" th:each="quiz : ${quizRows}">
+                                    <div class="department-quiz-item-main">
+                                        <p class="department-quiz-item-title mb-1" th:text="${quiz.sourceExamName}">Quiz Name</p>
+                                        <div class="department-quiz-item-meta">
+                                            <span class="department-pill"><i class="bi bi-journal-text"></i><span th:text="${quiz.subject != null && !#strings.isEmpty(quiz.subject) ? quiz.subject : '-'}">Subject</span></span>
+                                            <span class="department-pill"><i class="bi bi-person-badge"></i><span th:text="${quiz.sourceTeacherEmail}">teacher@example.com</span></span>
+                                            <span class="department-pill"><i class="bi bi-collection"></i><span th:text="${quiz.questionCount} + ' item(s)'">0 item(s)</span></span>
+                                            <span class="department-pill"><i class="bi bi-clock-history"></i><span th:text="${quiz.createdAt != null ? #temporals.format(quiz.createdAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</span></span>
+                                        </div>
+                                    </div>
                                     <a class="btn btn-sm department-btn-outline"
-                                       th:href="@{/department-admin/question-bank(page=${page},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject},sourceExamId=${quiz.sourceExamId},sourceExamName=${quiz.sourceExamName})}">
-                                        <i class="bi bi-eye me-1"></i>View Quiz
+                                       th:href="@{/department-admin/question-bank/quiz(page=${page},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject},sourceExamId=${quiz.sourceExamId},sourceExamName=${quiz.sourceExamName})}">
+                                        <i class="bi bi-eye me-1"></i>View
                                     </a>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <a class="btn btn-sm department-btn-outline"
+                             th:href="@{/department-admin/question-bank(page=${page-1},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject})}"
+                           th:classappend="${!hasPrev} ? ' disabled' : ''">Previous</a>
+                        <span class="small text-muted" th:text="'Page ' + ${page + 1} + ' of ' + ${totalPages}">Page 1 of 1</span>
+                        <a class="btn btn-sm department-btn-outline"
+                             th:href="@{/department-admin/question-bank(page=${page+1},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject})}"
+                           th:classappend="${!hasNext} ? ' disabled' : ''">Next</a>
                     </div>
                 </div>
-            </div>
-
-            <div class="card department-panel-card mt-3" th:if="${selectedQuiz != null}">
-                <div class="card-header d-flex justify-content-between align-items-center department-panel-header">
-                    <span class="fw-semibold">
-                        <i class="bi bi-list-check me-2"></i>
-                        <span th:text="${selectedQuiz.sourceExamName}">Selected Quiz</span>
-                    </span>
-                    <small class="text-muted" th:text="${selectedQuiz.questionCount} + ' question(s)'">0 question(s)</small>
-                </div>
-                <div class="card-body p-0">
-                    <div th:if="${selectedQuizQuestions == null || selectedQuizQuestions.isEmpty()}" class="p-3 text-muted small">
-                        No questions found for this quiz.
-                    </div>
-                    <div th:if="${selectedQuizQuestions != null && !selectedQuizQuestions.isEmpty()}" class="table-responsive">
-                        <table class="table table-sm table-hover align-middle mb-0 department-table">
-                            <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>Question</th>
-                                <th>Options</th>
-                                <th>Correct Answer</th>
-                                <th>Difficulty</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr th:each="question : ${selectedQuizQuestions}">
-                                <td th:text="${question.number}">1</td>
-                                <td th:text="${question.questionText}">Question text</td>
-                                <td>
-                                    <ul class="mb-0 ps-3" th:if="${question.choices != null && !question.choices.isEmpty()}">
-                                        <li th:each="choice : ${question.choices}" th:text="${choice}">Choice</li>
-                                    </ul>
-                                    <span class="text-muted small" th:if="${question.choices == null || question.choices.isEmpty()}">No options</span>
-                                </td>
-                                <td><span class="fw-semibold" th:text="${question.answerText}">A</span></td>
-                                <td><span class="badge bg-secondary" th:text="${question.difficulty}">Medium</span></td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center mt-3">
-                <a class="btn btn-sm department-btn-outline"
-                     th:href="@{/department-admin/question-bank(page=${page-1},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject},sourceExamId=${selectedExamId},sourceExamName=${selectedExamName})}"
-                   th:classappend="${!hasPrev} ? ' disabled' : ''">Previous</a>
-                <span class="small text-muted" th:text="'Page ' + ${page + 1} + ' of ' + ${totalPages}">Page 1 of 1</span>
-                <a class="btn btn-sm department-btn-outline"
-                     th:href="@{/department-admin/question-bank(page=${page+1},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject},sourceExamId=${selectedExamId},sourceExamName=${selectedExamName})}"
-                   th:classappend="${!hasNext} ? ' disabled' : ''">Next</a>
             </div>
         </div>
     </div>

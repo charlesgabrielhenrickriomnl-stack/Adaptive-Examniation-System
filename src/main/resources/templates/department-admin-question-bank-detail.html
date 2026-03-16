@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="shortcut icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png">
+    <title>Quiz Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/teacher-dashboard.css}">
+    <link rel="stylesheet" th:href="@{/css/department-admin-dashboard.css}">
+</head>
+<body class="teacher-dashboard-page department-dashboard-page">
+<div class="teacher-layout">
+    <div th:replace="~{department-admin-nav :: departmentAdminNav}"></div>
+
+    <div class="teacher-content-wrapper">
+        <div class="container py-4">
+            <div class="department-program-banner mb-3">
+                <div class="department-program-banner-main">
+                    <h3 class="department-page-title mb-1">
+                        <span class="department-title-icon department-title-icon-lg"><i class="bi bi-list-check"></i></span>
+                        <span th:text="${selectedQuiz != null ? selectedQuiz.sourceExamName : 'Quiz Details'}">Quiz Details</span>
+                    </h3>
+                    <p class="department-page-subtitle mb-0" th:text="${(selectedProgram != null and !#strings.isEmpty(selectedProgram)) ? (departmentName + ' • ' + selectedProgram) : departmentName}">Department</p>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <a class="btn btn-sm department-btn-outline"
+                       th:href="@{/department-admin/question-bank(page=${page},size=${size},search=${search},departmentName=${selectedDepartment},programName=${selectedProgram},subject=${selectedSubject})}">
+                        <i class="bi bi-arrow-left me-1"></i> Back to Quiz List
+                    </a>
+                </div>
+            </div>
+
+            <div class="card department-panel-card mb-3" th:if="${selectedQuiz != null}">
+                <div class="card-header d-flex justify-content-between align-items-center department-panel-header">
+                    <span class="fw-semibold"><i class="bi bi-journal-richtext me-2"></i>Quiz Information</span>
+                    <small class="text-muted" th:text="${selectedQuiz.questionCount} + ' question(s)'">0 question(s)</small>
+                </div>
+                <div class="card-body">
+                    <div class="department-quiz-item-meta">
+                        <span class="department-pill"><i class="bi bi-journal-text"></i><span th:text="${selectedQuiz.subject != null && !#strings.isEmpty(selectedQuiz.subject) ? selectedQuiz.subject : '-'}">Subject</span></span>
+                        <span class="department-pill"><i class="bi bi-person-badge"></i><span th:text="${selectedQuiz.sourceTeacherEmail}">teacher@example.com</span></span>
+                        <span class="department-pill"><i class="bi bi-building"></i><span th:text="${selectedQuiz.sourceTeacherDepartment != null && !#strings.isEmpty(selectedQuiz.sourceTeacherDepartment) ? selectedQuiz.sourceTeacherDepartment : '-'}">Department</span></span>
+                        <span class="department-pill"><i class="bi bi-mortarboard"></i><span th:text="${selectedQuiz.sourceTeacherProgram != null && !#strings.isEmpty(selectedQuiz.sourceTeacherProgram) ? selectedQuiz.sourceTeacherProgram : '-'}">Program</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card department-panel-card">
+                <div class="card-header d-flex justify-content-between align-items-center department-panel-header">
+                    <span class="fw-semibold"><i class="bi bi-ui-checks-grid me-2"></i>Questions and Answers</span>
+                    <small class="text-muted" th:text="${selectedQuizQuestions != null ? selectedQuizQuestions.size() : 0} + ' item(s)'">0 item(s)</small>
+                </div>
+                <div class="card-body p-0">
+                    <div th:if="${selectedQuiz == null}" class="p-3 text-muted small">
+                        Quiz not found in your department/program scope.
+                    </div>
+                    <div th:if="${selectedQuiz != null && (selectedQuizQuestions == null || selectedQuizQuestions.isEmpty())}" class="p-3 text-muted small">
+                        No questions found for this quiz.
+                    </div>
+                    <div th:if="${selectedQuiz != null && selectedQuizQuestions != null && !selectedQuizQuestions.isEmpty()}" class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0 department-table">
+                            <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Question</th>
+                                <th>Options</th>
+                                <th>Correct Answer</th>
+                                <th>Difficulty</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="question : ${selectedQuizQuestions}">
+                                <td th:text="${question.number}">1</td>
+                                <td th:text="${question.questionText}">Question text</td>
+                                <td>
+                                    <ul class="mb-0 ps-3" th:if="${question.choices != null && !question.choices.isEmpty()}">
+                                        <li th:each="choice : ${question.choices}" th:text="${choice}">Choice</li>
+                                    </ul>
+                                    <span class="text-muted small" th:if="${question.choices == null || question.choices.isEmpty()}">No options</span>
+                                </td>
+                                <td><span class="fw-semibold" th:text="${question.answerText}">A</span></td>
+                                <td><span class="badge bg-secondary" th:text="${question.difficulty}">Medium</span></td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
