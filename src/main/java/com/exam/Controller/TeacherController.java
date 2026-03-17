@@ -1786,7 +1786,14 @@ public class TeacherController {
             return "redirect:/teacher/subjects";
         }
 
-        if (selectedStudents == null || selectedStudents.isEmpty()) {
+        Set<String> uniqueSelectedStudents = selectedStudents == null
+            ? new LinkedHashSet<>()
+            : selectedStudents.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        if (uniqueSelectedStudents.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Please select at least one student.");
             return "redirect:/teacher/subject-classroom/" + subjectId;
         }
@@ -1852,16 +1859,33 @@ public class TeacherController {
         String distributedAnswerKeyJson = gson.toJson(selectedAnswerKey);
 
         // Exam distribution: only mark exam as available for students.
-        int attempted = 0;
+        int attempted = uniqueSelectedStudents.size();
         int distributed = 0;
         int failed = 0;
         Set<String> usedQuestionOrders = new HashSet<>();
-        for (String studentEmail : selectedStudents) {
-            if (studentEmail == null || studentEmail.isBlank()) {
+        for (String studentEmail : uniqueSelectedStudents) {
+            String normalizedStudentEmail = studentEmail == null ? "" : studentEmail.trim().toLowerCase();
+            if (normalizedStudentEmail.isBlank()) {
+                failed++;
                 continue;
             }
-            DistributedExam distExam = new DistributedExam();
-            distExam.setStudentEmail(studentEmail.trim());
+
+            List<DistributedExam> existingActive = distributedExamRepository.findAll().stream()
+                .filter(item -> item != null)
+                .filter(item -> !item.isSubmitted())
+                .filter(item -> sameText(item.getSubject(), subject.getSubjectName()))
+                .filter(item -> sameText(item.getExamId(), paper.getExamId()))
+                .filter(item -> sameText(item.getStudentEmail(), normalizedStudentEmail))
+                .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+
+            DistributedExam distExam = existingActive.isEmpty() ? new DistributedExam() : existingActive.get(0);
+            if (existingActive.size() > 1) {
+                distributedExamRepository.deleteAll(existingActive.subList(1, existingActive.size()));
+            }
+
+            distExam.setStudentEmail(normalizedStudentEmail);
             distExam.setExamId(paper.getExamId());
             distExam.setSubject(subject.getSubjectName());
             distExam.setExamName(paper.getExamName());
@@ -2003,6 +2027,8 @@ public class TeacherController {
             studentNameByEmail.put(key, student.getStudentName());
         }
 
+        Map<String, Map<String, String>> generatedOtpByEmail = extractGeneratedOtpByEmail(model);
+
         List<Map<String, Object>> submittedStudents = new ArrayList<>();
         List<Map<String, Object>> notSubmittedStudents = new ArrayList<>();
         List<Map<String, Object>> queuedStudents = new ArrayList<>();
@@ -2060,6 +2086,10 @@ public class TeacherController {
             item.put("otpActionLabel", resolveOtpActionLabel(distribution, now));
             item.put("otpAvailableForGeneration", !distribution.isSubmitted());
 
+            Map<String, String> generatedOtp = generatedOtpByEmail.get(rawEmail.toLowerCase());
+            item.put("generatedOtpCode", generatedOtp == null ? "" : generatedOtp.getOrDefault("otpCode", ""));
+            item.put("generatedOtpExpiresAt", generatedOtp == null ? "" : generatedOtp.getOrDefault("expiresAt", ""));
+
             boolean completedSubmission = submission != null && isSubmissionCompleted(submission);
             if (completedSubmission || (submission == null && distribution.isSubmitted())) {
                 submittedStudents.add(item);
@@ -2104,6 +2134,42 @@ public class TeacherController {
                 || (effectiveDeadline != null && !effectiveDeadline.isBlank()));
 
         return "subject-distribution-students";
+    }
+
+    private Map<String, Map<String, String>> extractGeneratedOtpByEmail(Model model) {
+        Map<String, Map<String, String>> generated = new HashMap<>();
+        if (model == null) {
+            return generated;
+        }
+
+        Object raw = model.asMap().get("generatedOtpRows");
+        if (!(raw instanceof List<?> rows)) {
+            return generated;
+        }
+
+        for (Object rowObj : rows) {
+            if (!(rowObj instanceof Map<?, ?> row)) {
+                continue;
+            }
+
+            Object rawEmail = row.get("studentEmail");
+            Object rawOtpCode = row.get("otpCode");
+            Object rawExpiresAt = row.get("expiresAt");
+
+            String email = rawEmail == null ? "" : String.valueOf(rawEmail).trim().toLowerCase();
+            String otpCode = rawOtpCode == null ? "" : String.valueOf(rawOtpCode).trim();
+            String expiresAt = rawExpiresAt == null ? "" : String.valueOf(rawExpiresAt).trim();
+            if (email.isBlank() || otpCode.isBlank()) {
+                continue;
+            }
+
+            Map<String, String> otpData = new HashMap<>();
+            otpData.put("otpCode", otpCode);
+            otpData.put("expiresAt", expiresAt);
+            generated.put(email, otpData);
+        }
+
+        return generated;
     }
 
     @PostMapping("/subject-classroom/{id}/distribution-students/generate-otp")
@@ -2199,11 +2265,18 @@ public class TeacherController {
         LocalDateTime generatedAt = LocalDateTime.now();
         LocalDateTime expiresAt = generatedAt.plusMinutes(ACCESS_OTP_VALID_MINUTES);
 
-        target.setAccessOtpHash(passwordEncoder.encode(otpCode));
-        target.setAccessOtpGeneratedAt(generatedAt);
-        target.setAccessOtpExpiresAt(expiresAt);
-        target.setAccessOtpVerifiedAt(null);
-        distributedExamRepository.save(target);
+        List<DistributedExam> otpTargets = findActiveBatchDistributionsForStudent(target);
+        if (otpTargets.isEmpty()) {
+            otpTargets = List.of(target);
+        }
+
+        for (DistributedExam otpTarget : otpTargets) {
+            otpTarget.setAccessOtpHash(passwordEncoder.encode(otpCode));
+            otpTarget.setAccessOtpGeneratedAt(generatedAt);
+            otpTarget.setAccessOtpExpiresAt(expiresAt);
+            otpTarget.setAccessOtpVerifiedAt(null);
+        }
+        distributedExamRepository.saveAll(otpTargets);
 
         String studentName = enrolledStudentRepository.findBySubjectId(subject.getId()).stream()
             .filter(enrolled -> enrolled != null)
@@ -2233,6 +2306,27 @@ public class TeacherController {
             target.getTimeLimit(),
             target.getDeadline(),
             target.getId());
+    }
+
+    @GetMapping("/subject-classroom/{id}/distribution-students/generate-otp")
+    public String generateDistributionOtpGet(@PathVariable("id") Long id,
+                                             @RequestParam(name = "studentEmail", required = false) String studentEmail,
+                                             @RequestParam(name = "distributionId", required = false) Long distributionId,
+                                             @RequestParam(name = "filterExamId", required = false) String filterExamId,
+                                             @RequestParam(name = "filterExamName", required = false) String filterExamName,
+                                             @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
+                                             @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
+                                             @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                             RedirectAttributes redirectAttributes) {
+        redirectAttributes.addFlashAttribute("errorMessage", "Use the Generate Code button to submit OTP generation.");
+        return "redirect:" + buildDistributionStudentsReturnTo(
+            id,
+            filterExamId,
+            filterExamName,
+            filterActivityType,
+            filterTimeLimit,
+            filterDeadline,
+            distributionId);
     }
 
     @PostMapping("/subject-classroom/{id}/distribution-students/generate-otp-all")
@@ -2343,11 +2437,18 @@ public class TeacherController {
             LocalDateTime generatedAt = LocalDateTime.now();
             LocalDateTime expiresAt = generatedAt.plusMinutes(ACCESS_OTP_VALID_MINUTES);
 
-            target.setAccessOtpHash(passwordEncoder.encode(otpCode));
-            target.setAccessOtpGeneratedAt(generatedAt);
-            target.setAccessOtpExpiresAt(expiresAt);
-            target.setAccessOtpVerifiedAt(null);
-            toSave.add(target);
+            List<DistributedExam> otpTargets = findActiveBatchDistributionsForStudent(target);
+            if (otpTargets.isEmpty()) {
+                otpTargets = List.of(target);
+            }
+
+            for (DistributedExam otpTarget : otpTargets) {
+                otpTarget.setAccessOtpHash(passwordEncoder.encode(otpCode));
+                otpTarget.setAccessOtpGeneratedAt(generatedAt);
+                otpTarget.setAccessOtpExpiresAt(expiresAt);
+                otpTarget.setAccessOtpVerifiedAt(null);
+                toSave.add(otpTarget);
+            }
 
             String studentEmail = target.getStudentEmail() == null ? "" : target.getStudentEmail().trim();
             String studentName = studentNameByEmail.getOrDefault(studentEmail.toLowerCase(), studentEmail);
@@ -2399,6 +2500,47 @@ public class TeacherController {
             effectiveTimeLimit,
             effectiveDeadline,
             effectiveDistributionId);
+    }
+
+    private List<DistributedExam> findActiveBatchDistributionsForStudent(DistributedExam source) {
+        if (source == null || source.isSubmitted()) {
+            return new ArrayList<>();
+        }
+
+        String studentEmail = source.getStudentEmail() == null ? "" : source.getStudentEmail().trim();
+        String batchKey = buildDistributionBatchKey(source);
+        if (studentEmail.isBlank() || batchKey.isBlank()) {
+            return new ArrayList<>();
+        }
+
+        return distributedExamRepository.findAll().stream()
+            .filter(item -> item != null)
+            .filter(item -> !item.isSubmitted())
+            .filter(item -> sameText(item.getStudentEmail(), studentEmail))
+            .filter(item -> batchKey.equals(buildDistributionBatchKey(item)))
+            .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+    }
+
+    @GetMapping("/subject-classroom/{id}/distribution-students/generate-otp-all")
+    public String generateDistributionOtpForAllGet(@PathVariable("id") Long id,
+                                                   @RequestParam(name = "distributionId", required = false) Long distributionId,
+                                                   @RequestParam(name = "filterExamId", required = false) String filterExamId,
+                                                   @RequestParam(name = "filterExamName", required = false) String filterExamName,
+                                                   @RequestParam(name = "filterActivityType", required = false) String filterActivityType,
+                                                   @RequestParam(name = "filterTimeLimit", required = false) Integer filterTimeLimit,
+                                                   @RequestParam(name = "filterDeadline", required = false) String filterDeadline,
+                                                   RedirectAttributes redirectAttributes) {
+        redirectAttributes.addFlashAttribute("errorMessage", "Use the Generate / Regenerate OTP button to submit OTP generation.");
+        return "redirect:" + buildDistributionStudentsReturnTo(
+            id,
+            filterExamId,
+            filterExamName,
+            filterActivityType,
+            filterTimeLimit,
+            filterDeadline,
+            distributionId);
     }
 
     @PostMapping("/subject-classroom/{id}/distribution-students/reopen")
@@ -3019,17 +3161,40 @@ public class TeacherController {
         sorted.sort(Comparator.comparing(DistributedExam::getDistributedAt,
             Comparator.nullsLast(Comparator.reverseOrder())));
 
-        List<Map<String, Object>> summaryRows = new ArrayList<>();
+        Map<String, Map<String, DistributedExam>> latestByBatchAndStudent = new LinkedHashMap<>();
         for (DistributedExam distributedExam : sorted) {
             if (distributedExam == null || distributedExam.getExamName() == null || distributedExam.getExamName().isBlank()) {
                 continue;
             }
 
+            String batchKey = buildDistributionBatchKey(distributedExam);
+            String studentKey = normalize(distributedExam.getStudentEmail());
+            if (batchKey.isBlank() || studentKey.isBlank()) {
+                continue;
+            }
+
+            latestByBatchAndStudent
+                .computeIfAbsent(batchKey, ignored -> new LinkedHashMap<>())
+                .putIfAbsent(studentKey, distributedExam);
+        }
+
+        List<Map<String, Object>> summaryRows = new ArrayList<>();
+        for (Map<String, DistributedExam> studentMap : latestByBatchAndStudent.values()) {
+            if (studentMap == null || studentMap.isEmpty()) {
+                continue;
+            }
+
+            List<DistributedExam> batchRows = new ArrayList<>(studentMap.values());
+            batchRows.sort(Comparator.comparing(DistributedExam::getDistributedAt,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+            DistributedExam distributedExam = batchRows.get(0);
+
             String deadlineRaw = distributedExam.getDeadline() == null ? "" : distributedExam.getDeadline();
             Map<String, Object> row = new HashMap<>();
             Integer safeTimeLimit = distributedExam.getTimeLimit();
-            int submittedCount = distributedExam.isSubmitted() ? 1 : 0;
-            int assignedCount = 1;
+            int assignedCount = batchRows.size();
+            int submittedCount = (int) batchRows.stream().filter(DistributedExam::isSubmitted).count();
             int notSubmitted = assignedCount - submittedCount;
 
             row.put("distributionId", distributedExam.getId());
@@ -3077,6 +3242,22 @@ public class TeacherController {
         }
 
         return summaryRows;
+    }
+
+    private String buildDistributionBatchKey(DistributedExam distributedExam) {
+        if (distributedExam == null) {
+            return "";
+        }
+
+        String subjectKey = normalize(distributedExam.getSubject());
+        String examIdentity = normalize(distributedExam.getExamId()).isBlank()
+            ? "name:" + normalize(distributedExam.getExamName())
+            : "id:" + normalize(distributedExam.getExamId());
+        String activityKey = normalize(distributedExam.getActivityType());
+        String deadlineKey = normalize(distributedExam.getDeadline());
+        String timeLimitKey = String.valueOf(distributedExam.getTimeLimit() == null ? 60 : distributedExam.getTimeLimit());
+
+        return String.join("|", subjectKey, examIdentity, activityKey, timeLimitKey, deadlineKey);
     }
 
     private String formatDeadline(String deadlineRaw) {

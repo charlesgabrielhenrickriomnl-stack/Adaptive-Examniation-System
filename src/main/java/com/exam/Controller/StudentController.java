@@ -166,11 +166,12 @@ public class StudentController {
                 Comparator.nullsLast(Comparator.reverseOrder())))
             .toList();
 
-        List<Map<String, Object>> pendingExams = distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
-            .filter(item -> sameText(item.getSubject(), subjectName))
-            .filter(item -> !isMissedExam(item))
-            .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())))
+        List<Map<String, Object>> pendingExams = dedupePendingDistributionsByBatch(
+                distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
+                    .filter(item -> sameText(item.getSubject(), subjectName))
+                    .filter(item -> !isMissedExam(item))
+                    .toList())
+            .stream()
             .map(this::toPendingExamCard)
             .toList();
 
@@ -188,8 +189,11 @@ public class StudentController {
     @GetMapping("/take-exam")
     public String takeExamFirstAvailable(Principal principal, HttpSession session) {
         String studentEmail = getStudentEmail(principal);
-        Optional<DistributedExam> firstPending = distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
-            .filter(item -> !isMissedExam(item))
+        Optional<DistributedExam> firstPending = dedupePendingDistributionsByBatch(
+                distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
+                    .filter(item -> !isMissedExam(item))
+                    .toList())
+            .stream()
             .findFirst();
         if (firstPending.isEmpty()) {
             return "redirect:/student/dashboard";
@@ -400,6 +404,38 @@ public class StudentController {
         }
 
         if (!passwordEncoder.matches(submittedCode, otpHash)) {
+            List<DistributedExam> siblingRows = distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
+                .filter(item -> item != null)
+                .filter(item -> item.getId() != null && !item.getId().equals(distributedExamId))
+                .filter(item -> sameDistributionBatch(item, distributedExam))
+                .toList();
+
+            Optional<DistributedExam> matchedSibling = siblingRows.stream()
+                .filter(item -> {
+                    String siblingHash = item.getAccessOtpHash() == null ? "" : item.getAccessOtpHash().trim();
+                    LocalDateTime siblingExpiry = item.getAccessOtpExpiresAt();
+                    return !siblingHash.isBlank()
+                        && siblingExpiry != null
+                        && siblingExpiry.isAfter(LocalDateTime.now())
+                        && passwordEncoder.matches(submittedCode, siblingHash);
+                })
+                .findFirst();
+
+            if (matchedSibling.isPresent()) {
+                List<DistributedExam> toVerify = new ArrayList<>(siblingRows);
+                toVerify.add(distributedExam);
+                LocalDateTime verifiedAt = LocalDateTime.now();
+
+                for (DistributedExam row : toVerify) {
+                    row.setAccessOtpVerifiedAt(verifiedAt);
+                    row.setAccessOtpHash(null);
+                    row.setAccessOtpGeneratedAt(null);
+                    row.setAccessOtpExpiresAt(null);
+                }
+                distributedExamRepository.saveAll(toVerify);
+                return "redirect:/student/take-exam/" + distributedExamId;
+            }
+
             redirectAttributes.addFlashAttribute("errorMessage", "Invalid OTP. Please ask your teacher and try again.");
             return "redirect:/student/take-exam/" + distributedExamId;
         }
@@ -970,19 +1006,18 @@ public class StudentController {
             }
 
             Map<String, Long> pendingByType = new LinkedHashMap<>();
-            distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
-                .filter(item -> sameText(item.getSubject(), subjectName))
-                .sorted(Comparator.comparing(DistributedExam::getDistributedAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())))
-                .forEach(item -> {
-                    if (isMissedExam(item)) {
-                        return;
-                    }
-                    String type = (item.getActivityType() == null || item.getActivityType().isBlank())
-                        ? "Activity"
-                        : item.getActivityType().trim();
-                    pendingByType.merge(type, 1L, Long::sum);
-                });
+            List<DistributedExam> pendingRows = dedupePendingDistributionsByBatch(
+                distributedExamRepository.findByStudentEmailAndSubmittedFalse(studentEmail).stream()
+                    .filter(item -> sameText(item.getSubject(), subjectName))
+                    .filter(item -> !isMissedExam(item))
+                    .toList());
+
+            pendingRows.forEach(item -> {
+                String type = (item.getActivityType() == null || item.getActivityType().isBlank())
+                    ? "Activity"
+                    : item.getActivityType().trim();
+                pendingByType.merge(type, 1L, Long::sum);
+            });
 
             List<Map<String, Object>> pendingSummaries = new ArrayList<>();
             long pendingCount = 0L;
@@ -2341,6 +2376,55 @@ public class StudentController {
             return false;
         }
         return left.trim().equalsIgnoreCase(right.trim());
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
+    }
+
+    private String buildDistributionBatchKey(DistributedExam item) {
+        if (item == null) {
+            return "";
+        }
+
+        String examIdentity = normalizeText(item.getExamId()).isBlank()
+            ? "name:" + normalizeText(item.getExamName())
+            : "id:" + normalizeText(item.getExamId());
+
+        return String.join("|",
+            normalizeText(item.getSubject()),
+            examIdentity,
+            normalizeText(item.getActivityType()),
+            String.valueOf(item.getTimeLimit() == null ? 60 : item.getTimeLimit()),
+            normalizeText(item.getDeadline()));
+    }
+
+    private boolean sameDistributionBatch(DistributedExam left, DistributedExam right) {
+        String leftKey = buildDistributionBatchKey(left);
+        String rightKey = buildDistributionBatchKey(right);
+        return !leftKey.isBlank() && leftKey.equals(rightKey);
+    }
+
+    private List<DistributedExam> dedupePendingDistributionsByBatch(List<DistributedExam> rows) {
+        List<DistributedExam> sorted = new ArrayList<>(rows == null ? new ArrayList<>() : rows);
+        sorted.sort(Comparator.comparing(DistributedExam::getDistributedAt,
+            Comparator.nullsLast(Comparator.reverseOrder())));
+
+        Map<String, DistributedExam> latestByBatch = new LinkedHashMap<>();
+        for (DistributedExam row : sorted) {
+            if (row == null) {
+                continue;
+            }
+
+            String batchKey = buildDistributionBatchKey(row);
+            if (batchKey.isBlank()) {
+                continue;
+            }
+
+            latestByBatch.putIfAbsent(batchKey, row);
+        }
+
+        return new ArrayList<>(latestByBatch.values());
     }
 
     private Long parseLong(String value) {

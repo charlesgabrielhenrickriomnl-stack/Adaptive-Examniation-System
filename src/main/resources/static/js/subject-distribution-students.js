@@ -10,47 +10,44 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        const otpPanel = document.querySelector('.otp-display-panel');
-        if (otpPanel) {
-            const maskedToken = '••••••';
+        const maskedToken = '••••••';
 
-            function setOtpVisibility(codeChip, rowButton, showCode) {
-                if (!codeChip) {
-                    return;
-                }
-
-                const actualCode = codeChip.getAttribute('data-otp-code') || '';
-                codeChip.textContent = showCode ? actualCode : maskedToken;
-                codeChip.classList.toggle('is-masked', !showCode);
-
-                if (rowButton) {
-                    rowButton.setAttribute('data-otp-row-toggle', showCode ? 'hide' : 'show');
-                    rowButton.innerHTML = showCode
-                        ? '<i class="bi bi-eye-slash me-1"></i>Hide'
-                        : '<i class="bi bi-eye me-1"></i>Show';
-                }
+        function setOtpVisibility(codeChip, rowButton, showCode) {
+            if (!codeChip) {
+                return;
             }
 
-            otpPanel.querySelectorAll('.otp-row-toggle-btn').forEach(button => {
-                button.addEventListener('click', function () {
-                    const row = this.closest('tr');
-                    const codeChip = row ? row.querySelector('.otp-code-chip') : null;
-                    const shouldShow = this.getAttribute('data-otp-row-toggle') === 'show';
-                    setOtpVisibility(codeChip, this, shouldShow);
-                });
-            });
+            const actualCode = codeChip.getAttribute('data-otp-code') || '';
+            codeChip.textContent = showCode ? actualCode : maskedToken;
+            codeChip.classList.toggle('is-masked', !showCode);
 
-            otpPanel.querySelectorAll('.otp-toggle-all-btn').forEach(button => {
-                button.addEventListener('click', function () {
-                    const showCode = this.getAttribute('data-otp-toggle-all') === 'show';
-                    otpPanel.querySelectorAll('tbody tr').forEach(row => {
-                        const codeChip = row.querySelector('.otp-code-chip');
-                        const rowButton = row.querySelector('.otp-row-toggle-btn');
-                        setOtpVisibility(codeChip, rowButton, showCode);
-                    });
+            if (rowButton) {
+                rowButton.setAttribute('data-otp-row-toggle', showCode ? 'hide' : 'show');
+                rowButton.innerHTML = showCode
+                    ? '<i class="bi bi-eye-slash me-1"></i>Hide'
+                    : '<i class="bi bi-eye me-1"></i>Show';
+            }
+        }
+
+        document.querySelectorAll('.otp-row-toggle-btn, .otp-inline-toggle-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                const row = this.closest('tr');
+                const codeChip = row ? row.querySelector('.otp-code-chip') : this.closest('.otp-inline-wrap')?.querySelector('.otp-code-chip');
+                const shouldShow = this.getAttribute('data-otp-row-toggle') === 'show';
+                setOtpVisibility(codeChip, this, shouldShow);
+            });
+        });
+
+        document.querySelectorAll('.otp-toggle-all-btn').forEach(button => {
+            button.addEventListener('click', function () {
+                const showCode = this.getAttribute('data-otp-toggle-all') === 'show';
+                document.querySelectorAll('.otp-code-chip').forEach(codeChip => {
+                    const row = codeChip.closest('tr');
+                    const rowButton = row ? row.querySelector('.otp-row-toggle-btn, .otp-inline-toggle-btn') : null;
+                    setOtpVisibility(codeChip, rowButton, showCode);
                 });
             });
-        }
+        });
 
         const reopenModalEl = document.getElementById('reopenStudentModal');
         if (reopenModalEl && reopenModalEl.parentElement !== document.body) {
