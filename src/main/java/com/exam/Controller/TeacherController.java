@@ -4247,12 +4247,9 @@ public class TeacherController {
                                           List<Map<String, Object>> questions,
                                           Map<String, String> difficulties,
                                           Map<String, String> answerKey) {
-        if (paper == null || questions == null || difficulties == null || answerKey == null) {
-            return;
-        }
-
-        // Question-bank rows are now generated in-memory from processed papers.
-        // Keep this method as a no-op to avoid growing the question_bank_items table.
+        // Question-bank rows are generated in-memory from processed papers via
+        // buildTemporaryQuestionBankItems() and must never be written to
+        // question_bank_items.
     }
 
     private List<QuestionBankItem> buildTemporaryQuestionBankItems(List<OriginalProcessedPaper> papers) {

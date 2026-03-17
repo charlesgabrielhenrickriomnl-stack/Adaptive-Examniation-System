@@ -1108,16 +1108,12 @@ public class StudentController {
             return 0;
         }
 
-        List<Map<String, Object>> snapshotQuestions = parseQuestionsJson(distributedExam.getQuestionsJson());
-        if (!snapshotQuestions.isEmpty()) {
-            return snapshotQuestions.size();
-        }
-
         String examId = distributedExam.getExamId();
         if (examId == null || examId.isBlank()) {
             return 0;
         }
 
+        // Question items are never stored in DistributedExam; always count from OriginalProcessedPaper.
         return originalProcessedPaperRepository.findByExamId(examId)
             .map(paper -> {
                 int totalQuestions = parseQuestionsJson(paper.getOriginalQuestionsJson()).size();
@@ -1993,15 +1989,18 @@ public class StudentController {
     }
 
     private ExamContentSnapshot loadExamContent(DistributedExam distributedExam) {
-        List<Map<String, Object>> questionRows = parseQuestionsJson(distributedExam.getQuestionsJson());
-        Map<String, String> difficultyMap = parseSimpleMapJson(distributedExam.getDifficultiesJson());
-        Map<String, String> answerKeyMap = parseSimpleMapJson(distributedExam.getAnswerKeyJson());
-
-        if (!questionRows.isEmpty()) {
-            return new ExamContentSnapshot(questionRows, difficultyMap, answerKeyMap);
+        if (distributedExam == null) {
+            return null;
         }
 
-        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(distributedExam.getExamId());
+        String examId = distributedExam.getExamId();
+        if (examId == null || examId.isBlank()) {
+            return null;
+        }
+
+        // Question items are never stored in DistributedExam; always load from OriginalProcessedPaper.
+        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(examId);
+
         if (paperOpt.isEmpty()) {
             return null;
         }

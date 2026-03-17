@@ -47,6 +47,13 @@ public class User {
     private boolean enabled = false;
     
     private String verificationToken;
+
+    @Column(length = 120)
+    private String verificationCodeHash;
+
+    private LocalDateTime verificationCodeExpiresAt;
+
+    private LocalDateTime verificationCodeSentAt;
     
     private LocalDateTime createdAt;
     
@@ -96,6 +103,15 @@ public class User {
     
     public String getVerificationToken() { return verificationToken; }
     public void setVerificationToken(String token) { this.verificationToken = token; }
+
+    public String getVerificationCodeHash() { return verificationCodeHash; }
+    public void setVerificationCodeHash(String verificationCodeHash) { this.verificationCodeHash = verificationCodeHash; }
+
+    public LocalDateTime getVerificationCodeExpiresAt() { return verificationCodeExpiresAt; }
+    public void setVerificationCodeExpiresAt(LocalDateTime verificationCodeExpiresAt) { this.verificationCodeExpiresAt = verificationCodeExpiresAt; }
+
+    public LocalDateTime getVerificationCodeSentAt() { return verificationCodeSentAt; }
+    public void setVerificationCodeSentAt(LocalDateTime verificationCodeSentAt) { this.verificationCodeSentAt = verificationCodeSentAt; }
     
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

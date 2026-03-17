@@ -8,8 +8,8 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 
 import com.exam.entity.User;
@@ -42,13 +42,17 @@ public class CustomAuthenticationFailureHandler implements AuthenticationFailure
         Optional<User> userOpt = userRepository.findByEmail(email);
 
         if (userOpt.isEmpty()) {
-            field = "email";
-            message = "Email address not found.";
+            String encodedUsername = URLEncoder.encode(email, StandardCharsets.UTF_8);
+            response.sendRedirect("/login?username=" + encodedUsername + "&unregistered=true");
+            return;
         } else {
             User user = userOpt.get();
             if (!user.isEnabled()) {
-                field = "email";
-                message = "Account not verified yet. Please verify your email first.";
+                String encodedField = URLEncoder.encode("email", StandardCharsets.UTF_8);
+                String encodedMessage = URLEncoder.encode("Account is not verified yet. Check your email and click the verification link before login.", StandardCharsets.UTF_8);
+                String encodedUsername = URLEncoder.encode(user.getEmail(), StandardCharsets.UTF_8);
+                response.sendRedirect("/login?error=true&errorField=" + encodedField + "&errorMessage=" + encodedMessage + "&username=" + encodedUsername);
+                return;
             } else if (!passwordEncoder.matches(password, user.getPassword())) {
                 field = "password";
                 message = "Wrong password.";
@@ -65,7 +69,8 @@ public class CustomAuthenticationFailureHandler implements AuthenticationFailure
         String redirectUrl = "/login?error=true"
             + "&errorField=" + encodedField
             + "&errorMessage=" + encodedMessage
-            + "&username=" + encodedUsername;
+            + "&username=" + encodedUsername
+            + "&step=password";
 
         response.sendRedirect(redirectUrl);
     }

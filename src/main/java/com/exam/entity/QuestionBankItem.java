@@ -2,55 +2,37 @@ package com.exam.entity;
 
 import java.time.LocalDateTime;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
-@Entity
-@Table(name = "question_bank_items")
+/**
+ * Transient in-memory projection derived from OriginalProcessedPaper.
+ * This class is never persisted to the database; question items are built at
+ * runtime via buildTemporaryQuestionBankItems() and discarded after use.
+ */
 public class QuestionBankItem {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "source_exam_id", nullable = false, length = 64)
     private String sourceExamId;
 
-    @Column(name = "source_exam_name", nullable = false)
     private String sourceExamName;
 
-    @Column(name = "source_teacher_email")
     private String sourceTeacherEmail;
 
-    @Column(name = "source_teacher_department")
     private String sourceTeacherDepartment;
 
-    @Column(name = "subject", nullable = false)
     private String subject;
 
-    @Column(name = "activity_type", nullable = false)
     private String activityType;
 
-    @Column(name = "question_order", nullable = false)
     private Integer questionOrder;
 
-    @Column(name = "question_text", columnDefinition = "LONGTEXT", nullable = false)
     private String questionText;
 
-    @Column(name = "choices_json", columnDefinition = "LONGTEXT")
     private String choicesJson;
 
-    @Column(name = "answer_text", columnDefinition = "LONGTEXT")
     private String answerText;
 
-    @Column(name = "difficulty", length = 32)
     private String difficulty;
 
-    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     public QuestionBankItem() {

@@ -1,6 +1,7 @@
 package com.exam.Controller;
 
 import java.security.Principal;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.NonNull;
@@ -30,20 +31,48 @@ public class AuthController {
     public String showLoginPage(@RequestParam(name = "error", required = false) String error,
                                 @RequestParam(name = "errorField", required = false) String errorField,
                                 @RequestParam(name = "errorMessage", required = false) String errorMessage,
+                                @RequestParam(name = "successMessage", required = false) String successMessage,
+                                @RequestParam(name = "verifyResult", required = false) String verifyResult,
                                 @RequestParam(name = "username", required = false) String username,
+                                @RequestParam(name = "unregistered", required = false) String unregistered,
                                 @RequestParam(name = "logout", required = false) String logout,
                                 @RequestParam(name = "registered", required = false) String registered,
+                                @RequestParam(name = "pendingVerification", required = false) String pendingVerification,
+                                @RequestParam(name = "verified", required = false) String verified,
                                 Model model) {
-        if (error != null) {
+        String normalizedUsername = username == null ? "" : username.trim();
+        if (!normalizedUsername.isBlank()) {
+            model.addAttribute("username", normalizedUsername);
+        }
+
+        if (error != null || unregistered != null) {
             model.addAttribute("error", true);
             model.addAttribute("errorField", errorField);
-            model.addAttribute("errorMessage", errorMessage != null ? errorMessage : "Invalid email or password");
+
+            if (unregistered != null) {
+                model.addAttribute("errorField", "email");
+                model.addAttribute("errorMessage", "Email is not registered. Please create an account first.");
+                model.addAttribute("showSignupHint", true);
+            } else {
+                model.addAttribute("errorMessage", errorMessage != null ? errorMessage : "Invalid email or password");
+            }
         }
-        if (username != null) {
-            model.addAttribute("username", username);
-        }
+
         addIfNotNull(model, logout, "success", "You have been logged out successfully");
-        addIfNotNull(model, registered, "success", "Registration successful! Please login.");
+        if (pendingVerification != null) {
+            model.addAttribute("success", "Registration successful! Check your email and click the verification link before logging in.");
+        } else {
+            addIfNotNull(model, registered, "success", "Registration successful! You can now log in.");
+        }
+        if (successMessage != null && !successMessage.isBlank()) {
+            model.addAttribute("success", successMessage);
+        }
+        addIfNotNull(model, verified, "success", "Account verified successfully. You can now log in.");
+
+        if (verifyResult != null && !verifyResult.isBlank()) {
+            model.addAttribute("verifyResult", verifyResult.trim().toLowerCase());
+        }
+
         return "login";
     }
 
@@ -71,7 +100,8 @@ public class AuthController {
                                @RequestParam(name = "campusName", required = false) String campusName,
                                @RequestParam(name = "departmentName", required = false) String departmentName,
                                @RequestParam(name = "programName", required = false) String programName,
-                               Model model) {
+                               Model model,
+                               RedirectAttributes redirectAttributes) {
         String normalizedSchool = (schoolName == null || schoolName.isBlank()) ? AcademicCatalog.SCHOOL_NAME : schoolName.trim();
         String normalizedCampus = (campusName == null || campusName.isBlank()) ? AcademicCatalog.CAMPUS_NAME : campusName.trim();
         String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
@@ -135,13 +165,116 @@ public class AuthController {
             return "register";
         }
 
+        if (result.startsWith("WARN")) {
+            model.addAttribute("error", result.replace("WARN: ", ""));
+            populateRegistrationDefaults(model);
+            return "register";
+        }
+
+        if ("TEACHER".equalsIgnoreCase(role)) {
+            redirectAttributes.addAttribute("registered", "true");
+            redirectAttributes.addAttribute("pendingVerification", "true");
+            redirectAttributes.addAttribute("username", email == null ? "" : email.trim().toLowerCase());
+            return "redirect:/login";
+        }
+
         return "redirect:/login?registered=true";
     }
 
+    @PostMapping("/login/check-email")
+    public String checkLoginEmail(@RequestParam("email") String email,
+                                  RedirectAttributes redirectAttributes) {
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase();
+        if (normalizedEmail.isBlank()) {
+            redirectAttributes.addAttribute("error", "true");
+            redirectAttributes.addAttribute("errorField", "email");
+            redirectAttributes.addAttribute("errorMessage", "Please enter your email address.");
+            return "redirect:/login";
+        }
+
+        Optional<User> userOpt = userService.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            redirectAttributes.addAttribute("username", normalizedEmail);
+            redirectAttributes.addAttribute("unregistered", "true");
+            return "redirect:/login";
+        }
+
+        User user = userOpt.get();
+        if (user.isEnabled()) {
+            redirectAttributes.addAttribute("username", user.getEmail());
+            redirectAttributes.addAttribute("success", "Email recognized. Continue logging in.");
+            return "redirect:/login";
+        }
+
+        UserService.VerificationLinkResult sendResult = userService.resendVerificationLink(user.getEmail());
+        redirectAttributes.addAttribute("username", user.getEmail());
+        if (sendResult.success()) {
+            redirectAttributes.addAttribute("error", "true");
+            redirectAttributes.addAttribute("errorField", "email");
+            redirectAttributes.addAttribute("errorMessage", "Account is not verified yet. We sent a verification link to your email. Verify before logging in.");
+            return "redirect:/login";
+        }
+
+        if (sendResult.alreadyVerified()) {
+            return "redirect:/login";
+        }
+
+        redirectAttributes.addAttribute("error", "true");
+        redirectAttributes.addAttribute("errorField", "email");
+        redirectAttributes.addAttribute("errorMessage", sendResult.message());
+        return "redirect:/login";
+    }
+
     @GetMapping("/verify")
-    public String verifyEmail(@RequestParam("token") String token) {
-        boolean verified = userService.verifyEmail(token);
-        return verified ? "verification-success" : "verification-failure";
+    public String showVerifyEmailPage(@RequestParam(name = "token", required = false) String token,
+                                      RedirectAttributes redirectAttributes) {
+        if (token != null && !token.isBlank()) {
+            boolean verified = userService.verifyEmail(token.trim());
+            if (verified) {
+                return "redirect:/login?verifyResult=success";
+            }
+
+            return "redirect:/login?verifyResult=failed";
+        }
+
+        return "redirect:/login";
+    }
+
+    @PostMapping("/verify/send")
+    public String sendVerificationLink(@RequestParam(name = "email", required = false) String email,
+                                       RedirectAttributes redirectAttributes) {
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase();
+        if (normalizedEmail.isBlank()) {
+            redirectAttributes.addAttribute("error", "true");
+            redirectAttributes.addAttribute("errorField", "email");
+            redirectAttributes.addAttribute("errorMessage", "Enter your email to resend the verification link.");
+            return "redirect:/login";
+        }
+
+        Optional<User> userOpt = userService.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            redirectAttributes.addAttribute("username", normalizedEmail);
+            redirectAttributes.addAttribute("unregistered", "true");
+            return "redirect:/login";
+        }
+
+        User user = userOpt.get();
+        redirectAttributes.addAttribute("username", user.getEmail());
+        if (user.isEnabled()) {
+            redirectAttributes.addAttribute("verified", "true");
+            return "redirect:/login";
+        }
+
+        UserService.VerificationLinkResult sendResult = userService.resendVerificationLink(user.getEmail());
+        if (sendResult.success()) {
+            redirectAttributes.addAttribute("successMessage", "Verification link sent. Check your email and verify before logging in.");
+            return "redirect:/login";
+        }
+
+        redirectAttributes.addAttribute("error", "true");
+        redirectAttributes.addAttribute("errorField", "email");
+        redirectAttributes.addAttribute("errorMessage", sendResult.message());
+        return "redirect:/login";
     }
 
     @GetMapping("/dashboard")

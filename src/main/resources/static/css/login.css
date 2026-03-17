@@ -526,9 +526,11 @@ body.login-page.register-page {
 }
 
 .login-inline-alert {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 9px;
+    row-gap: 4px;
+    align-items: start;
     margin: -6px 0 14px;
     padding: 8px 10px;
     border-radius: 8px;
@@ -541,6 +543,23 @@ body.login-page.register-page {
 
 .login-inline-alert i {
     color: #b22222;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    margin-top: 2px;
+}
+
+.login-inline-alert-message,
+.login-inline-alert-hint {
+    grid-column: 2;
+    margin: 0;
+    display: block;
+    min-width: 0;
+    line-height: 1.45;
+}
+
+.login-inline-alert-hint {
+    padding-top: 4px;
+    border-top: 1px dashed rgba(178, 34, 34, 0.24);
 }
 
 .login-success-inline {
@@ -638,6 +657,58 @@ body.login-page.register-page {
 .login-contact-bar i {
     color: inherit;
     margin-right: 6px;
+}
+
+.verify-result-modal .modal-content {
+    border: 1px solid #ead9c2;
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.97), rgba(252, 245, 235, 0.94));
+    box-shadow: 0 18px 40px rgba(95, 13, 26, 0.22);
+}
+
+.verify-result-modal .modal-title {
+    color: #7b1022;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+}
+
+.verify-result-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    margin: 4px auto 10px;
+    font-size: 1.7rem;
+    font-weight: 900;
+}
+
+.verify-result-success .verify-result-icon {
+    color: #1f6b3b;
+    background: #edf9f1;
+    border: 1px solid #b9e4ca;
+}
+
+.verify-result-failed .verify-result-icon {
+    color: #8f1d2b;
+    background: #fff2f4;
+    border: 1px solid #efc4ca;
+}
+
+.verify-result-headline {
+    margin: 0 0 8px;
+    text-align: center;
+    color: #2f2218;
+    font-size: 1.07rem;
+    font-weight: 800;
+}
+
+.verify-result-copy {
+    margin: 0;
+    text-align: center;
+    color: #5c4b3d;
+    font-size: 0.93rem;
+    line-height: 1.45;
 }
 
 .auth-corner-seal {

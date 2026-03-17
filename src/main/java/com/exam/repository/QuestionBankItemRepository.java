@@ -1,15 +1,13 @@
 package com.exam.repository;
 
-import java.util.List;
+/**
+ * Intentionally not a Spring Data repository.
+ * QuestionBankItem is no longer a JPA entity; items are built in-memory via
+ * buildTemporaryQuestionBankItems() and discarded after use.
+ * Do not re-add @Repository or JpaRepository here.
+ */
+public final class QuestionBankItemRepository {
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import com.exam.entity.QuestionBankItem;
-
-@Repository
-public interface QuestionBankItemRepository extends JpaRepository<QuestionBankItem, Long> {
-    List<QuestionBankItem> findAllByOrderByCreatedAtDescIdDesc();
-    List<QuestionBankItem> findBySubjectIgnoreCaseOrderByCreatedAtDescIdDesc(String subject);
-    void deleteBySourceExamId(String sourceExamId);
+    private QuestionBankItemRepository() {
+    }
 }

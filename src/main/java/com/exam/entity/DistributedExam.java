@@ -9,6 +9,15 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+/**
+ * Distributed exam assignment metadata only.
+ * Question content was intentionally removed from this entity and must be
+ * loaded at runtime from OriginalProcessedPaper by exam ID.
+ *
+ * This entity stores assignment metadata such as student email, exam ID
+ * reference, subject, exam name, activity type, time limit, deadline,
+ * submission status, question indexes, and OTP fields.
+ */
 @Entity
 @Table(name = "distributed_exams")
 public class DistributedExam {
@@ -33,15 +42,6 @@ public class DistributedExam {
 
     @Column(nullable = false)
     private Integer timeLimit;
-
-    @Column(name = "questions_json", columnDefinition = "LONGTEXT")
-    private String questionsJson;
-
-    @Column(name = "difficulties_json", columnDefinition = "LONGTEXT")
-    private String difficultiesJson;
-
-    @Column(name = "answer_key_json", columnDefinition = "LONGTEXT")
-    private String answerKeyJson;
 
     @Column
     private String deadline;
@@ -82,12 +82,48 @@ public class DistributedExam {
     public void setActivityType(String activityType) { this.activityType = activityType; }
     public Integer getTimeLimit() { return timeLimit; }
     public void setTimeLimit(Integer timeLimit) { this.timeLimit = timeLimit; }
-    public String getQuestionsJson() { return questionsJson; }
-    public void setQuestionsJson(String questionsJson) { this.questionsJson = questionsJson; }
-    public String getDifficultiesJson() { return difficultiesJson; }
-    public void setDifficultiesJson(String difficultiesJson) { this.difficultiesJson = difficultiesJson; }
-    public String getAnswerKeyJson() { return answerKeyJson; }
-    public void setAnswerKeyJson(String answerKeyJson) { this.answerKeyJson = answerKeyJson; }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load question rows from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public String getQuestionsJson() { return null; }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load question rows from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public void setQuestionsJson(String questionsJson) { /* intentional no-op */ }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load difficulty map from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public String getDifficultiesJson() { return null; }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load difficulty map from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public void setDifficultiesJson(String difficultiesJson) { /* intentional no-op */ }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load answer key from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public String getAnswerKeyJson() { return null; }
+    /**
+     * @deprecated Question content is no longer stored on DistributedExam.
+     *             Load answer key from OriginalProcessedPaper via
+     *             findByExamId(examId).
+     */
+    @Deprecated
+    public void setAnswerKeyJson(String answerKeyJson) { /* intentional no-op */ }
     public String getDeadline() { return deadline; }
     public void setDeadline(String deadline) { this.deadline = deadline; }
     public LocalDateTime getDistributedAt() { return distributedAt; }

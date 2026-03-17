@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/login.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="login-page" th:attr="data-error-field=${errorField}">
+<body class="login-page" th:attr="data-error-field=${errorField},data-verify-result=${verifyResult}">
     <div class="login-container">
         <div class="content">
             <div class="login-panel">
@@ -41,7 +41,10 @@
 
                     <div th:if="${error}" class="login-inline-alert" id="loginErrorAlert" role="alert" aria-live="polite">
                         <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-                        <span th:text="${errorMessage}">Invalid email or password</span>
+                        <span class="login-inline-alert-message" th:text="${errorMessage}">Invalid email or password</span>
+                        <span th:if="${showSignupHint}" class="login-inline-alert-hint">
+                            Continue with <a href="/register">Sign Up</a> to create a new account.
+                        </span>
                     </div>
 
                     <button type="submit" class="btn btn-eac-red w-100">
@@ -83,6 +86,25 @@
 
     <img class="auth-corner-iso" th:src="@{/images/eac-iso-200px.png}" src="/images/eac-iso-200px.png" alt="EAC ISO Badge">
     <img class="auth-corner-seal" th:src="@{/images/eac-npc-seal.png}" src="/images/eac-npc-seal.png" alt="EAC NPC Seal">
+
+    <div class="modal fade verify-result-modal" id="verifyResultModal" tabindex="-1" aria-labelledby="verifyResultTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-1">
+                    <h5 class="modal-title" id="verifyResultTitle">Email Verification</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body pt-1">
+                    <div class="verify-result-icon" id="verifyResultIcon" aria-hidden="true">✓</div>
+                    <p class="verify-result-headline" id="verifyResultHeadline">Email verified successfully.</p>
+                    <p class="verify-result-copy" id="verifyResultCopy">You can now sign in to your account.</p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-eac-red px-4" data-bs-dismiss="modal">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script th:src="@{/js/login.js}"></script>
