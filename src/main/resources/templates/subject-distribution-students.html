@@ -60,14 +60,77 @@
 
             <div class="section-card">
                 <div th:if="${successMessage}" class="alert alert-success" th:text="${successMessage}"></div>
+                <div th:if="${warningMessage}" class="alert alert-warning" th:text="${warningMessage}"></div>
                 <div th:if="${errorMessage}" class="alert alert-danger" th:text="${errorMessage}"></div>
+
+                <div th:if="${generatedOtpRows != null and !#lists.isEmpty(generatedOtpRows)}" class="otp-display-panel mb-3">
+                    <div class="otp-display-header">
+                        <div class="otp-display-title">
+                            <i class="bi bi-shield-lock me-1"></i> Generated OTP Codes (visible once)
+                        </div>
+                        <div class="otp-visibility-controls">
+                            <button type="button" class="btn btn-sm btn-outline-dark otp-toggle-all-btn" data-otp-toggle-all="hide">
+                                <i class="bi bi-eye-slash me-1"></i>Hide All Codes
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-dark otp-toggle-all-btn" data-otp-toggle-all="show">
+                                <i class="bi bi-eye me-1"></i>Show All Codes
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive otp-display-table-wrap">
+                        <table class="table table-sm align-middle mb-0 otp-display-table">
+                            <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Email</th>
+                                <th>OTP</th>
+                                <th>Expires</th>
+                                <th>Visibility</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="otp : ${generatedOtpRows}">
+                                <td th:text="${otp.studentName}">Student</td>
+                                <td th:text="${otp.studentEmail}">email@example.com</td>
+                                <td>
+                                    <span class="badge bg-dark otp-code-chip"
+                                          th:attr="data-otp-code=${otp.otpCode}"
+                                          th:text="${otp.otpCode}">000000</span>
+                                </td>
+                                <td th:text="${otp.expiresAt}">Mar 01, 2026 10:00</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary otp-row-toggle-btn" data-otp-row-toggle="hide">
+                                        <i class="bi bi-eye-slash me-1"></i>Hide
+                                    </button>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
                 <div class="section-head d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                     <div class="section-title mb-0">
                         <i class="bi bi-list-ul"></i> Student Tracking List
                     </div>
-                    <input type="text" id="distributionSearch" class="form-control form-control-sm"
-                           placeholder="Search student name or email..." style="max-width:280px;">
+                    <div class="distribution-toolbar-controls distribution-toolbar-two-column">
+                        <form th:if="${totalTrackedCount > 0}"
+                              th:action="@{/teacher/subject-classroom/{id}/distribution-students/generate-otp-all(id=${subject.id})}"
+                              method="post"
+                              class="otp-bulk-form">
+                            <input type="hidden" name="distributionId" th:value="${distributionId}">
+                            <input type="hidden" name="filterExamId" th:value="${filterExamId}">
+                            <input type="hidden" name="filterExamName" th:value="${filterExamName}">
+                            <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
+                            <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
+                            <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
+                            <button type="submit" class="btn btn-sm btn-dark otp-bulk-btn" title="Generate or regenerate OTP for all tracked students in this quiz">
+                                <i class="bi bi-shield-lock me-1"></i> Generate / Regenerate OTP for All
+                            </button>
+                        </form>
+                        <input type="text" id="distributionSearch" class="form-control form-control-sm distribution-search-input"
+                               placeholder="Search student name or email...">
+                    </div>
                 </div>
 
                 <div th:if="${totalTrackedCount == 0}" class="empty-state">
@@ -125,21 +188,6 @@
                             </td>
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
-                                    <form th:if="${item.otpAvailableForGeneration}"
-                                          th:action="@{/teacher/subject-classroom/{id}/distribution-students/generate-otp(id=${subject.id})}"
-                                          method="post"
-                                          class="d-inline">
-                                        <input type="hidden" name="studentEmail" th:value="${item.studentEmail}">
-                                        <input type="hidden" name="distributionId" th:value="${item.distributionId}">
-                                        <input type="hidden" name="filterExamName" th:value="${filterExamName}">
-                                        <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
-                                        <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
-                                        <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
-                                        <button type="submit" class="btn btn-sm btn-outline-dark" title="Generate a one-time student OTP">
-                                            <i class="bi bi-shield-lock me-1"></i><span th:text="${item.otpActionLabel}">Generate OTP</span>
-                                        </button>
-                                    </form>
-
                                     <a th:if="${item.submissionId != null}"
                                        th:href="${item.viewResultUrl}"
                                                     class="btn btn-sm distribution-paper-btn"
@@ -160,6 +208,7 @@
                                           class="d-inline">
                                         <input type="hidden" name="redirectTo" value="distribution">
                                         <input type="hidden" name="subjectId" th:value="${subject.id}">
+                                        <input type="hidden" name="filterExamId" th:value="${filterExamId}">
                                         <input type="hidden" name="filterExamName" th:value="${filterExamName}">
                                         <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                         <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
@@ -219,15 +268,17 @@
                                           class="d-inline">
                                         <input type="hidden" name="studentEmail" th:value="${item.studentEmail}">
                                         <input type="hidden" name="distributionId" th:value="${item.distributionId}">
+                                        <input type="hidden" name="filterExamId" th:value="${filterExamId}">
                                         <input type="hidden" name="filterExamName" th:value="${filterExamName}">
                                         <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                         <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
                                         <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
-                                        <button type="submit" class="btn btn-sm btn-outline-dark" title="Generate a one-time student OTP">
-                                            <i class="bi bi-shield-lock me-1"></i><span th:text="${item.otpActionLabel}">Generate OTP</span>
+                                        <button type="submit"
+                                                class="btn btn-sm distribution-otp-btn"
+                                                title="Generate or regenerate code for this student">
+                                            <i class="bi bi-key me-1"></i>Generate Code
                                         </button>
                                     </form>
-
                                     <button th:if="${deadlinePassed}"
                                             type="button"
                                             class="btn btn-sm distribution-retake-btn open-reopen-student-modal"
@@ -272,15 +323,17 @@
                                           class="d-inline">
                                         <input type="hidden" name="studentEmail" th:value="${item.studentEmail}">
                                         <input type="hidden" name="distributionId" th:value="${item.distributionId}">
+                                        <input type="hidden" name="filterExamId" th:value="${filterExamId}">
                                         <input type="hidden" name="filterExamName" th:value="${filterExamName}">
                                         <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                         <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">
                                         <input type="hidden" name="filterDeadline" th:value="${filterDeadline}">
-                                        <button type="submit" class="btn btn-sm btn-outline-dark" title="Generate a one-time student OTP">
-                                            <i class="bi bi-shield-lock me-1"></i><span th:text="${item.otpActionLabel}">Generate OTP</span>
+                                        <button type="submit"
+                                                class="btn btn-sm distribution-otp-btn"
+                                                title="Generate or regenerate code for this student">
+                                            <i class="bi bi-key me-1"></i>Generate Code
                                         </button>
                                     </form>
-
                                     <button th:if="${deadlinePassed}"
                                             type="button"
                                             class="btn btn-sm distribution-retake-btn open-reopen-student-modal"
@@ -311,6 +364,7 @@
                                 <div class="fw-semibold mb-3" id="reopenStudentName">Student</div>
 
                                 <input type="hidden" name="studentEmail" id="reopenStudentEmailInput">
+                                <input type="hidden" name="filterExamId" th:value="${filterExamId}">
                                 <input type="hidden" name="filterExamName" th:value="${filterExamName}">
                                 <input type="hidden" name="filterActivityType" th:value="${filterActivityType}">
                                 <input type="hidden" name="filterTimeLimit" th:value="${filterTimeLimit}">

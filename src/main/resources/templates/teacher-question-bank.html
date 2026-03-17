@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Question Bank</title>
+    <link rel="icon" type="image/png" th:href="@{/images/EAC_Emblem.png}" href="/images/EAC_Emblem.png">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/teacher-dashboard.css}">
+</head>
+<body class="teacher-dashboard-page">
+<div class="teacher-layout">
+    <div th:replace="~{teacher-nav :: teacherNav}"></div>
+
+    <div class="teacher-content-wrapper">
+        <div class="container-fluid py-4">
+            <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+                <div>
+                    <h4 class="mb-1"><i class="bi bi-collection me-2"></i>Department Question Bank</h4>
+                    <p class="text-muted mb-0">Temporary list generated from processed papers. No extra question-bank rows are stored.</p>
+                </div>
+                <span class="badge bg-light text-dark border" th:text="${totalQuestionBank} + ' question(s)'">0 question(s)</span>
+            </div>
+
+            <div th:if="${successMessage}" class="alert alert-success" role="alert">
+                <i class="bi bi-check-circle me-1"></i><span th:text="${successMessage}">Success</span>
+            </div>
+            <div th:if="${errorMessage}" class="alert alert-danger" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i><span th:text="${errorMessage}">Error</span>
+            </div>
+
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <form method="get" th:action="@{/teacher/department-dashboard/question-bank}" class="row g-2">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control" name="search" th:value="${search}" placeholder="Search question, quiz, teacher, department...">
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" name="subject">
+                                <option value="">All subjects</option>
+                                <option th:each="subject : ${subjectOptions}"
+                                        th:value="${subject}"
+                                        th:selected="${selectedSubject != null and selectedSubject.equalsIgnoreCase(subject)}"
+                                        th:text="${subject}">Subject</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-grid">
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i>Apply</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <form method="post" th:action="@{/teacher/department-dashboard/question-bank/create-exam}">
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label mb-1">New Exam Name</label>
+                                <input class="form-control" name="examName" placeholder="e.g. Midterm Mixed Quiz" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label mb-1">Subject</label>
+                                <input class="form-control" name="subject" th:value="${selectedSubject}" placeholder="Subject" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label mb-1">Activity Type</label>
+                                <input class="form-control" name="activityType" value="Exam" required>
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                <button type="submit" class="btn btn-success"><i class="bi bi-plus-circle me-1"></i>Create Exam</button>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">Select questions below before creating an exam.</small>
+                    </div>
+                </div>
+
+                <div th:if="${questionBankGrouped == null || questionBankGrouped.isEmpty()}" class="card border-0 shadow-sm">
+                    <div class="card-body text-muted">No question-bank content found for your filters.</div>
+                </div>
+
+                <div th:if="${questionBankGrouped != null && !questionBankGrouped.isEmpty()}" class="d-flex flex-column gap-3">
+                    <div class="card border-0 shadow-sm" th:each="subjectGroup : ${questionBankGrouped}">
+                        <div class="card-header bg-light d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                            <strong th:text="${subjectGroup.subjectName}">Subject</strong>
+                            <span class="small text-muted" th:text="${subjectGroup.subjectQuestionCount} + ' question(s) • ' + ${subjectGroup.paperCount} + ' quiz(es)'">0 question(s)</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="border rounded p-2 mb-2" th:each="paper : ${subjectGroup.paperGroups}">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+                                    <div>
+                                        <div class="fw-semibold" th:text="${paper.paperName}">Quiz</div>
+                                        <div class="small text-muted">
+                                            <span th:text="${paper.activityType}">Exam</span>
+                                            <span> • </span>
+                                            <span th:text="${paper.uploadedBy}">teacher@email.com</span>
+                                        </div>
+                                    </div>
+                                    <span class="badge bg-light text-dark border" th:text="${paper.questionCount} + ' item(s)'">0 item(s)</span>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                        <tr>
+                                            <th style="width: 40px;"></th>
+                                            <th style="width: 90px;">#</th>
+                                            <th>Question</th>
+                                            <th style="width: 120px;">Difficulty</th>
+                                            <th style="width: 120px;">Choices</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr th:each="row, stat : ${paper.questions}">
+                                            <td>
+                                                <input class="form-check-input" type="checkbox" name="questionIds" th:value="${row.id}">
+                                            </td>
+                                            <td th:text="${stat.count}">1</td>
+                                            <td th:text="${row.questionPreview}">Question text</td>
+                                            <td>
+                                                <span class="badge bg-secondary-subtle text-dark border" th:text="${row.difficulty}">Medium</span>
+                                            </td>
+                                            <td class="small text-muted" th:text="${row.choiceCount} + ' option(s)'">0 option(s)</td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>

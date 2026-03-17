@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const batchLabel = document.getElementById('reopenBatchLabel');
+        const examIdInput = document.getElementById('reopenBatchExamId');
         const examNameInput = document.getElementById('reopenBatchExamName');
         const activityTypeInput = document.getElementById('reopenBatchActivityType');
         const timeLimitInput = document.getElementById('reopenBatchTimeLimit');
@@ -49,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
+            const examId = trigger.getAttribute('data-exam-id') || '';
             const examName = trigger.getAttribute('data-exam-name') || '';
             const examLabel = trigger.getAttribute('data-exam-label') || examName;
             const activityType = trigger.getAttribute('data-activity-type') || '';
@@ -58,6 +60,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (batchLabel) {
                 batchLabel.textContent = examLabel + (activityType ? ' - ' + activityType : '');
+            }
+            if (examIdInput) {
+                examIdInput.value = examId;
             }
             if (examNameInput) {
                 examNameInput.value = examName;

@@ -751,6 +751,26 @@ public class StudentController {
         return "student-submission-confirmation";
     }
 
+    @GetMapping("/submit")
+    public String submitFallbackGet(@RequestParam(name = "distributedExamId", required = false) Long distributedExamId,
+                                    Principal principal,
+                                    RedirectAttributes redirectAttributes) {
+        String studentEmail = getStudentEmail(principal);
+        if (distributedExamId != null) {
+            Optional<DistributedExam> distributionOpt = distributedExamRepository.findById(distributedExamId);
+            if (distributionOpt.isPresent()) {
+                DistributedExam distribution = distributionOpt.get();
+                if (sameText(distribution.getStudentEmail(), studentEmail) && !distribution.isSubmitted()) {
+                    redirectAttributes.addFlashAttribute("errorMessage", "Submission request was interrupted. Please submit your exam again.");
+                    return "redirect:/student/take-exam/" + distributedExamId;
+                }
+            }
+        }
+
+        redirectAttributes.addFlashAttribute("errorMessage", "Exam submit page cannot be opened directly.");
+        return "redirect:/student/dashboard";
+    }
+
     @GetMapping("/results/{id}")
     public String results(@PathVariable("id") Long id,
                           @RequestParam(value = "classroomId", required = false) Long classroomId,

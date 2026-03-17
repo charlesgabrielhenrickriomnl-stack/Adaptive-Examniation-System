@@ -1,13 +1,22 @@
 package com.exam.config;
 
-import com.exam.entity.User;
-import com.exam.repository.UserRepository;
-import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
+
+import com.exam.entity.DepartmentProgram;
+import com.exam.entity.User;
+import com.exam.repository.DepartmentProgramRepository;
+import com.exam.repository.UserRepository;
+
+import jakarta.annotation.PostConstruct;
 
 @Component
 @DependsOn("userEnabledBackfillConfig")
@@ -34,6 +43,9 @@ public class DepartmentAdminBootstrapConfig {
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
+    @Autowired
+    private DepartmentProgramRepository departmentProgramRepository;
+
     @PostConstruct
     public void ensureBuiltInDepartmentAdmin() {
         if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
@@ -54,6 +66,7 @@ public class DepartmentAdminBootstrapConfig {
             if (changed) {
                 userRepository.save(existing);
             }
+            ensureDepartmentPrograms(existing.getDepartmentName(), existing.getEmail());
             return;
         }
 
@@ -69,5 +82,46 @@ public class DepartmentAdminBootstrapConfig {
         departmentAdmin.setEnabled(true);
         departmentAdmin.setVerificationToken(null);
         userRepository.save(departmentAdmin);
+        ensureDepartmentPrograms(departmentAdmin.getDepartmentName(), departmentAdmin.getEmail());
+    }
+
+    private void ensureDepartmentPrograms(String departmentName, String createdByEmail) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return;
+        }
+
+        List<String> catalogPrograms = AcademicCatalog.programsForDepartment(normalizedDepartment);
+        if (catalogPrograms == null || catalogPrograms.isEmpty()) {
+            return;
+        }
+
+        Set<String> existingPrograms = departmentProgramRepository
+            .findByDepartmentNameIgnoreCaseOrderByProgramNameAsc(normalizedDepartment)
+            .stream()
+            .map(DepartmentProgram::getProgramName)
+            .filter(value -> value != null && !value.isBlank())
+            .map(value -> value.trim().toLowerCase())
+            .collect(Collectors.toSet());
+
+        List<DepartmentProgram> toInsert = new ArrayList<>();
+        for (String programName : catalogPrograms) {
+            String normalizedProgram = programName == null ? "" : programName.trim();
+            if (normalizedProgram.isBlank()) {
+                continue;
+            }
+
+            if (existingPrograms.add(normalizedProgram.toLowerCase())) {
+                DepartmentProgram row = new DepartmentProgram();
+                row.setDepartmentName(normalizedDepartment);
+                row.setProgramName(normalizedProgram);
+                row.setCreatedByEmail(createdByEmail == null ? "system" : createdByEmail.trim());
+                toInsert.add(row);
+            }
+        }
+
+        if (!toInsert.isEmpty()) {
+            departmentProgramRepository.saveAll(toInsert);
+        }
     }
 }

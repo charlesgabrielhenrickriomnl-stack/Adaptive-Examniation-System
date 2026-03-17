@@ -120,7 +120,7 @@
 .paper-actions-toolbar {
     margin: 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.7rem;
     align-items: center;
     max-width: 1000px;
@@ -129,13 +129,19 @@
 
 .paper-actions-main {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
     gap: 0.5rem;
     align-items: stretch;
 }
 
 .paper-actions-main > form {
     margin: 0;
+    display: flex;
+}
+
+.paper-actions-main > a,
+.paper-actions-main > form {
+    min-width: 0;
 }
 
 .paper-actions-main .paper-action-btn {
@@ -144,14 +150,16 @@
 
 .paper-action-btn {
     border-radius: 11px;
-    padding: 0.45rem 0.78rem;
-    min-height: 38px;
+    padding: 0.42rem 0.68rem;
+    min-height: 40px;
+    height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
-    font-size: 0.86rem;
+    font-size: 0.83rem;
     letter-spacing: 0.01em;
+    white-space: nowrap;
     transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -162,8 +170,9 @@
 }
 
 .paper-action-back {
-    width: 220px;
-    justify-self: stretch;
+    width: auto;
+    min-width: 220px;
+    justify-self: end;
 }
 
 .paper-search-wrap {

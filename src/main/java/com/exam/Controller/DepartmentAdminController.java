@@ -28,12 +28,13 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import com.exam.config.AcademicCatalog;
 import com.exam.entity.DepartmentProgram;
 import com.exam.entity.EnrolledStudent;
+import com.exam.entity.OriginalProcessedPaper;
 import com.exam.entity.QuestionBankItem;
 import com.exam.entity.Subject;
 import com.exam.entity.User;
 import com.exam.repository.DepartmentProgramRepository;
 import com.exam.repository.EnrolledStudentRepository;
-import com.exam.repository.QuestionBankItemRepository;
+import com.exam.repository.OriginalProcessedPaperRepository;
 import com.exam.repository.SubjectRepository;
 import com.exam.repository.UserRepository;
 import com.google.gson.Gson;
@@ -49,7 +50,7 @@ public class DepartmentAdminController {
     private final SubjectRepository subjectRepository;
     private final EnrolledStudentRepository enrolledStudentRepository;
     private final DepartmentProgramRepository departmentProgramRepository;
-    private final QuestionBankItemRepository questionBankItemRepository;
+    private final OriginalProcessedPaperRepository originalProcessedPaperRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Gson gson = new Gson();
 
@@ -57,13 +58,13 @@ public class DepartmentAdminController {
                                      SubjectRepository subjectRepository,
                                      EnrolledStudentRepository enrolledStudentRepository,
                                      DepartmentProgramRepository departmentProgramRepository,
-                                     QuestionBankItemRepository questionBankItemRepository,
+                                     OriginalProcessedPaperRepository originalProcessedPaperRepository,
                                      BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.subjectRepository = subjectRepository;
         this.enrolledStudentRepository = enrolledStudentRepository;
         this.departmentProgramRepository = departmentProgramRepository;
-        this.questionBankItemRepository = questionBankItemRepository;
+        this.originalProcessedPaperRepository = originalProcessedPaperRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -78,6 +79,8 @@ public class DepartmentAdminController {
         String departmentName = currentAdmin.getDepartmentName() == null
             ? ""
             : currentAdmin.getDepartmentName().trim();
+
+        ensureCatalogProgramsPersisted(departmentName, adminEmail);
 
         List<User> teachersInDepartment = userRepository.findAll().stream()
             .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
@@ -112,7 +115,8 @@ public class DepartmentAdminController {
             .filter(item -> teacherEmailsInDepartment.contains(normalizeEmail(item.getTeacherEmail())))
             .toList();
 
-        List<QuestionBankItem> departmentQuestionBank = questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+        List<QuestionBankItem> temporaryQuestionBank = buildTemporaryQuestionBankItems(originalProcessedPaperRepository.findAll());
+        List<QuestionBankItem> departmentQuestionBank = temporaryQuestionBank.stream()
             .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), departmentName))
             .toList();
 
@@ -685,9 +689,11 @@ public class DepartmentAdminController {
             }
         }
 
+        List<QuestionBankItem> temporaryQuestionBank = buildTemporaryQuestionBankItems(originalProcessedPaperRepository.findAll());
+
         List<QuestionBankItem> scopedItems = selectedDepartment.isBlank()
             ? new ArrayList<>()
-            : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+            : temporaryQuestionBank.stream()
                 .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), selectedDepartment))
                 .filter(item -> {
                     if (selectedProgram.isBlank()) {
@@ -977,7 +983,7 @@ public class DepartmentAdminController {
             .toList();
 
         Map<String, Map<String, Object>> quizzesByKey = new LinkedHashMap<>();
-        for (QuestionBankItem item : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc()) {
+        for (QuestionBankItem item : buildTemporaryQuestionBankItems(originalProcessedPaperRepository.findAll())) {
             if (item == null) {
                 continue;
             }
@@ -1116,9 +1122,11 @@ public class DepartmentAdminController {
             }
         }
 
+        List<QuestionBankItem> temporaryQuestionBank = buildTemporaryQuestionBankItems(originalProcessedPaperRepository.findAll());
+
         List<QuestionBankItem> selectedQuizItems = selectedDepartment.isBlank()
             ? new ArrayList<>()
-            : questionBankItemRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
+            : temporaryQuestionBank.stream()
                 .filter(item -> sameDepartment(resolveItemDepartment(item, teacherProfilesByEmail), selectedDepartment))
                 .filter(item -> {
                     if (selectedProgram.isBlank()) {
@@ -1383,6 +1391,105 @@ public class DepartmentAdminController {
         return teacherProfile.getDepartmentName().trim();
     }
 
+    private List<QuestionBankItem> buildTemporaryQuestionBankItems(List<OriginalProcessedPaper> papers) {
+        List<QuestionBankItem> items = new ArrayList<>();
+        if (papers == null || papers.isEmpty()) {
+            return items;
+        }
+
+        for (OriginalProcessedPaper paper : papers) {
+            if (paper == null || paper.getExamId() == null || paper.getExamId().isBlank()) {
+                continue;
+            }
+
+            List<Map<String, Object>> questionRows = parseQuestionRowsJson(paper.getOriginalQuestionsJson());
+            Map<String, String> difficultyMap = parseSimpleStringMapJson(paper.getDifficultiesJson());
+            Map<String, String> answerKeyMap = parseSimpleStringMapJson(paper.getAnswerKeyJson());
+
+            for (int index = 0; index < questionRows.size(); index++) {
+                Map<String, Object> row = questionRows.get(index);
+                if (row == null) {
+                    continue;
+                }
+
+                String key = String.valueOf(index + 1);
+                String questionText = toPlainText(String.valueOf(row.getOrDefault("question", "")));
+
+                QuestionBankItem item = new QuestionBankItem();
+                item.setSourceExamId(paper.getExamId());
+                item.setSourceExamName(paper.getExamName());
+                item.setSourceTeacherEmail(paper.getTeacherEmail());
+                item.setSourceTeacherDepartment(paper.getDepartmentName());
+                item.setSubject(paper.getSubject());
+                item.setActivityType(paper.getActivityType());
+                item.setQuestionOrder(index + 1);
+                item.setQuestionText(questionText);
+                item.setChoicesJson(gson.toJson(extractChoicesFromQuestionRow(row)));
+                item.setAnswerText(answerKeyMap.getOrDefault(key, ""));
+                item.setDifficulty(difficultyMap.getOrDefault(key, "Medium"));
+                item.setCreatedAt(paper.getProcessedAt());
+                items.add(item);
+            }
+        }
+
+        return items;
+    }
+
+    private List<Map<String, Object>> parseQuestionRowsJson(String json) {
+        if (json == null || json.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            List<Map<String, Object>> parsed = gson.fromJson(json,
+                new TypeToken<List<Map<String, Object>>>() { }.getType());
+            return parsed == null ? new ArrayList<>() : parsed;
+        } catch (RuntimeException exception) {
+            return new ArrayList<>();
+        }
+    }
+
+    private Map<String, String> parseSimpleStringMapJson(String json) {
+        if (json == null || json.isBlank()) {
+            return new HashMap<>();
+        }
+        try {
+            Map<String, String> parsed = gson.fromJson(json,
+                new TypeToken<Map<String, String>>() { }.getType());
+            return parsed == null ? new HashMap<>() : parsed;
+        } catch (RuntimeException exception) {
+            return new HashMap<>();
+        }
+    }
+
+    private List<String> extractChoicesFromQuestionRow(Map<String, Object> row) {
+        List<String> choices = new ArrayList<>();
+        if (row == null) {
+            return choices;
+        }
+
+        Object choicesObj = row.get("choices");
+        if (choicesObj instanceof List<?> list) {
+            for (Object item : list) {
+                String normalized = toPlainText(item == null ? "" : String.valueOf(item));
+                if (!normalized.isBlank() && !"-".equals(normalized)) {
+                    choices.add(normalized);
+                }
+            }
+            return choices;
+        }
+
+        if (choicesObj instanceof String text && !text.isBlank()) {
+            for (String token : text.split("\\r?\\n|,")) {
+                String normalized = toPlainText(token);
+                if (!normalized.isBlank() && !"-".equals(normalized)) {
+                    choices.add(normalized);
+                }
+            }
+        }
+
+        return choices;
+    }
+
     private boolean sameDepartment(String left, String right) {
         String leftValue = left == null ? "" : left.trim();
         String rightValue = right == null ? "" : right.trim();
@@ -1409,6 +1516,46 @@ public class DepartmentAdminController {
             }
         }
         return false;
+    }
+
+    private void ensureCatalogProgramsPersisted(String departmentName, String createdByEmail) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return;
+        }
+
+        List<String> catalogPrograms = AcademicCatalog.programsForDepartment(normalizedDepartment);
+        if (catalogPrograms == null || catalogPrograms.isEmpty()) {
+            return;
+        }
+
+        Set<String> existingProgramKeys = departmentProgramRepository
+            .findByDepartmentNameIgnoreCaseOrderByProgramNameAsc(normalizedDepartment)
+            .stream()
+            .map(DepartmentProgram::getProgramName)
+            .filter(value -> value != null && !value.isBlank())
+            .map(value -> value.trim().toLowerCase())
+            .collect(Collectors.toSet());
+
+        List<DepartmentProgram> toSave = new ArrayList<>();
+        for (String programName : catalogPrograms) {
+            String normalizedProgram = programName == null ? "" : programName.trim();
+            if (normalizedProgram.isBlank()) {
+                continue;
+            }
+
+            if (existingProgramKeys.add(normalizedProgram.toLowerCase())) {
+                DepartmentProgram departmentProgram = new DepartmentProgram();
+                departmentProgram.setDepartmentName(normalizedDepartment);
+                departmentProgram.setProgramName(normalizedProgram);
+                departmentProgram.setCreatedByEmail(createdByEmail == null ? "system" : createdByEmail.trim());
+                toSave.add(departmentProgram);
+            }
+        }
+
+        if (!toSave.isEmpty()) {
+            departmentProgramRepository.saveAll(toSave);
+        }
     }
 
     private List<String> buildProgramOptionsForDepartment(String departmentName,

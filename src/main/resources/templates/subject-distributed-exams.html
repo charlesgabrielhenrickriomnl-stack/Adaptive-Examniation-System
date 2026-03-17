@@ -87,7 +87,7 @@
                             <td>
                                 <div class="d-inline-flex gap-2">
                                     <a class="btn btn-sm btn-outline-primary"
-                                       th:href="@{/teacher/subject-classroom/{id}/distribution-students(id=${subject.id},filterExamName=${quiz.filterExamName},filterActivityType=${quiz.filterActivityType},filterTimeLimit=${quiz.filterTimeLimit},filterDeadline=${quiz.filterDeadline},distributionId=${quiz.distributionId})}">
+                                       th:href="@{/teacher/subject-classroom/{id}/distribution-students(id=${subject.id},distributionId=${quiz.distributionId})}">
                                         <i class="bi bi-people me-1"></i> View Students
                                     </a>
                                     <button th:if="${quiz.overdue}"
@@ -103,6 +103,7 @@
                                           class="d-inline"
                                           onsubmit="return confirm('Delete this distributed quiz batch? This cannot be undone.');">
                                         <input type="hidden" name="distributionId" th:value="${quiz.distributionId}">
+                                        <input type="hidden" name="examId" th:value="${quiz.filterExamId}">
                                         <input type="hidden" name="examName" th:value="${quiz.filterExamName}">
                                         <input type="hidden" name="activityType" th:value="${quiz.filterActivityType}">
                                         <input type="hidden" name="timeLimit" th:value="${quiz.filterTimeLimit}">
@@ -131,6 +132,7 @@
                                 <p class="mb-2 small text-muted">This re-opens the selected quiz for students who did not submit.</p>
                                 <div class="fw-semibold mb-3" id="reopenBatchLabel">Quiz batch</div>
 
+                                <input type="hidden" name="examId" id="reopenBatchExamId">
                                 <input type="hidden" name="examName" id="reopenBatchExamName">
                                 <input type="hidden" name="activityType" id="reopenBatchActivityType">
                                 <input type="hidden" name="timeLimit" id="reopenBatchTimeLimit">

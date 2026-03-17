@@ -30,6 +30,7 @@ let tabSwitchCount = 0;
 let isExamActive = true;
 let isSubmitting = false;
 let isNavigationLocked = false;
+let autoSubmitScheduled = false;
 const CHOICE_LABEL_REGEX = '(?:[A-Z]{1,3}|\\d{1,4})';
 
 function decodeHtmlEntities(value) {
@@ -395,6 +396,55 @@ function appendExamMetaInputs(form) {
         );
         form.appendChild(adaptiveOrderInput);
     }
+}
+
+function getOrCreateExamSubmitForm() {
+    let form = document.getElementById('examForm');
+    if (!form) {
+        form = document.createElement('form');
+        form.id = 'examForm';
+        document.body.appendChild(form);
+    }
+
+    form.setAttribute('action', '/student/submit');
+    form.setAttribute('method', 'post');
+    form.setAttribute('accept-charset', 'UTF-8');
+    form.innerHTML = '';
+    return form;
+}
+
+function appendAnswerInputs(form) {
+    for (const [key, value] of Object.entries(answers)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+    }
+
+    appendExamMetaInputs(form);
+}
+
+function submitExamFormNow(clearLocalStorage) {
+    if (isSubmitting) {
+        return;
+    }
+
+    isSubmitting = true;
+    isExamActive = false;
+
+    if (timerInterval) {
+        clearInterval(timerInterval);
+    }
+
+    const form = getOrCreateExamSubmitForm();
+    appendAnswerInputs(form);
+
+    if (clearLocalStorage) {
+        localStorage.removeItem('examAnswers');
+    }
+
+    form.submit();
 }
 
 function lockNavigationDuringExam() {
@@ -769,32 +819,7 @@ function submitExam() {
     isExamActive = false;
 
     if (confirm('Are you sure you want to submit your exam? You cannot change your answers after submission.')) {
-        // Clear timer
-        if (timerInterval) {
-            clearInterval(timerInterval);
-        }
-
-        // Mark as submitting so beforeunload doesn't show "Leave site?"
-        isSubmitting = true;
-
-        // Create form and submit
-        const form = document.getElementById('examForm');
-        form.innerHTML = '';
-        
-        for (const [key, value] of Object.entries(answers)) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-        }
-
-        appendExamMetaInputs(form);
-        
-        // Clear localStorage
-        localStorage.removeItem('examAnswers');
-        
-        form.submit();
+        submitExamFormNow(true);
     } else {
         // Student cancelled — re-enable anti-cheat
         isExamActive = true;
@@ -914,6 +939,13 @@ function checkDeadline(deadlineDate) {
  * Auto-submit exam when time expires
  */
 function autoSubmitExam() {
+    if (isSubmitting || autoSubmitScheduled) {
+        return;
+    }
+
+    autoSubmitScheduled = true;
+    isExamActive = false;
+
     // Show time's up modal
     showTimesUpModal();
     
@@ -921,24 +953,7 @@ function autoSubmitExam() {
     setTimeout(() => {
         console.log('⏰ Time expired - force submitting exam');
         
-        // Suppress "Leave site?" dialog on auto-submit
-        isSubmitting = true;
-
-        // Create form and submit without confirmation
-        const form = document.getElementById('examForm');
-        form.innerHTML = '';
-        
-        for (const [key, value] of Object.entries(answers)) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = key;
-            input.value = value;
-            form.appendChild(input);
-        }
-
-        appendExamMetaInputs(form);
-        
-        form.submit();
+        submitExamFormNow(false);
     }, 3000);
 }
 
