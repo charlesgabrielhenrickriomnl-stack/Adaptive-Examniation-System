@@ -9,10 +9,17 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "users")
+@Table(
+    name = "users",
+    indexes = {
+        @Index(name = "idx_users_role_department", columnList = "role, department_name"),
+        @Index(name = "idx_users_department_program", columnList = "department_name, program_name")
+    }
+)
 public class User {
     
     @Id

@@ -1,7 +1,12 @@
 package com.exam.service;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.springframework.stereotype.Service;
-import java.util.*;
 
 /**
  * IRT 3PL (Three-Parameter Logistic) Model Service
@@ -243,6 +248,8 @@ public class IRT3PLService {
     public int selectNextItem(double currentTheta, List<ItemParameters> availableItems, Set<Integer> usedIndices) {
         int bestIndex = -1;
         double maxInformation = -1.0;
+        final double infoTolerance = 1e-9;
+        List<Integer> tiedBest = new ArrayList<>();
         
         for (int i = 0; i < availableItems.size(); i++) {
             if (usedIndices.contains(i)) continue;
@@ -255,10 +262,18 @@ public class IRT3PLService {
             double pStar = (prob - c) / (1 - c);
             double information = a * a * pStar * (1 - pStar) * ((1 - c) * (1 - c));
             
-            if (information > maxInformation) {
+            if (information > maxInformation + infoTolerance) {
                 maxInformation = information;
                 bestIndex = i;
+                tiedBest.clear();
+                tiedBest.add(i);
+            } else if (Math.abs(information - maxInformation) <= infoTolerance) {
+                tiedBest.add(i);
             }
+        }
+
+        if (!tiedBest.isEmpty()) {
+            return tiedBest.get(ThreadLocalRandom.current().nextInt(tiedBest.size()));
         }
         
         return bestIndex;

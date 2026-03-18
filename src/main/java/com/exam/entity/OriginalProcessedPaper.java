@@ -3,14 +3,24 @@ package com.exam.entity;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
+import com.exam.persistence.CompressedJsonConverter;
+
 @Entity
-@Table(name = "processed_papers_original")
+@Table(
+    name = "processed_papers_original",
+    indexes = {
+        @Index(name = "idx_processed_papers_teacher_processed", columnList = "teacher_email, processed_at"),
+        @Index(name = "idx_processed_papers_department_processed", columnList = "department_name, processed_at")
+    }
+)
 public class OriginalProcessedPaper {
 
     @Id
@@ -59,12 +69,18 @@ public class OriginalProcessedPaper {
     @Column(name = "answer_key_file_size")
     private Long answerKeyFileSize;
 
+    @Column(name = "question_count")
+    private Integer questionCount;
+
+    @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "original_questions_json", columnDefinition = "LONGTEXT", nullable = false)
     private String originalQuestionsJson;
 
+    @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "difficulties_json", columnDefinition = "LONGTEXT")
     private String difficultiesJson;
 
+    @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "answer_key_json", columnDefinition = "LONGTEXT")
     private String answerKeyJson;
 
@@ -73,6 +89,7 @@ public class OriginalProcessedPaper {
 
     public OriginalProcessedPaper() {
         this.processedAt = LocalDateTime.now();
+        this.questionCount = 0;
     }
 
     public OriginalProcessedPaper(String examId,
@@ -93,6 +110,7 @@ public class OriginalProcessedPaper {
         this.originalQuestionsJson = originalQuestionsJson;
         this.difficultiesJson = difficultiesJson;
         this.answerKeyJson = answerKeyJson;
+        this.questionCount = 0;
         this.processedAt = LocalDateTime.now();
     }
 
@@ -140,6 +158,9 @@ public class OriginalProcessedPaper {
 
     public Long getAnswerKeyFileSize() { return answerKeyFileSize; }
     public void setAnswerKeyFileSize(Long answerKeyFileSize) { this.answerKeyFileSize = answerKeyFileSize; }
+
+    public Integer getQuestionCount() { return questionCount; }
+    public void setQuestionCount(Integer questionCount) { this.questionCount = questionCount; }
 
     public String getOriginalQuestionsJson() { return originalQuestionsJson; }
     public void setOriginalQuestionsJson(String originalQuestionsJson) { this.originalQuestionsJson = originalQuestionsJson; }

@@ -4,23 +4,30 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "enrolled_students")
+@Table(
+    name = "enrolled_students",
+    indexes = {
+        @Index(name = "idx_enrollment_teacher_student", columnList = "teacher_email, student_email"),
+        @Index(name = "idx_enrollment_subject", columnList = "subject_id"),
+        @Index(name = "idx_enrollment_student", columnList = "student_email")
+    }
+)
 public class EnrolledStudent {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(nullable = false)
+    @Column(name = "teacher_email", nullable = false)
     private String teacherEmail;
     
-    @Column(nullable = false)
+    @Column(name = "student_email", nullable = false)
     private String studentEmail;
     
     @Column(nullable = false)
     private String studentName;
     
-    @Column(nullable = false)
+    @Column(name = "subject_id", nullable = false)
     private Long subjectId;
     
     @Column

@@ -34,6 +34,9 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -51,6 +54,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.util.HtmlUtils;
 
 import com.exam.config.AcademicCatalog;
+import com.exam.entity.DepartmentSharingSetting;
 import com.exam.entity.DistributedExam;
 import com.exam.entity.EnrolledStudent;
 import com.exam.entity.ExamSubmission;
@@ -58,6 +62,7 @@ import com.exam.entity.OriginalProcessedPaper;
 import com.exam.entity.QuestionBankItem;
 import com.exam.entity.Subject;
 import com.exam.entity.User;
+import com.exam.repository.DepartmentSharingSettingRepository;
 import com.exam.repository.EnrolledStudentRepository;
 import com.exam.repository.ExamSubmissionRepository;
 import com.exam.repository.OriginalProcessedPaperRepository;
@@ -91,6 +96,8 @@ public class TeacherController {
     private static final String DEFAULT_IMPORTED_STUDENT_PASSWORD = "Student123!";
     private static final int ACCESS_OTP_LENGTH = 6;
     private static final long ACCESS_OTP_VALID_MINUTES = 10L;
+    private static final int DEFAULT_LIST_PAGE_SIZE = 20;
+    private static final int MAX_LIST_PAGE_SIZE = 100;
     private static final List<String> DEPARTMENTS = List.of(
         "ETEEAP",
         "Arts & Sciences",
@@ -150,6 +157,9 @@ public class TeacherController {
 
     @Autowired
     private UploadStorageService uploadStorageService;
+
+    @Autowired
+    private DepartmentSharingSettingRepository departmentSharingSettingRepository;
 
     @GetMapping("/homepage")
     public String homepage(Model model, Principal principal) {
@@ -381,33 +391,27 @@ public class TeacherController {
     }
 
     @GetMapping("/processed-papers")
-    public String processedPapers(@RequestParam(name = "search", required = false) String search, Model model, Principal principal) {
+    public String processedPapers(@RequestParam(name = "search", required = false) String search,
+                                  @RequestParam(name = "page", defaultValue = "0") Integer page,
+                                  @RequestParam(name = "size", defaultValue = "20") Integer size,
+                                  Model model,
+                                  Principal principal) {
         String teacherEmail = principal != null ? principal.getName() : "";
-        List<OriginalProcessedPaper> papers = findTeacherProcessedPapers(teacherEmail);
+        int safePage = Math.max(0, page == null ? 0 : page);
+        int safePageSize = normalizePageSize(size);
+        Page<OriginalProcessedPaper> paperPage = findTeacherProcessedPapersPage(teacherEmail, search, safePage, safePageSize);
 
-        String normalizedSearch = normalize(search);
         List<Map<String, Object>> processedExams = new ArrayList<>();
 
-        for (OriginalProcessedPaper paper : papers) {
-            List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
-            if (normalizeQuestionRowsInPlace(questions)) {
-                paper.setOriginalQuestionsJson(gson.toJson(questions));
-                originalProcessedPaperRepository.save(paper);
-            }
+        for (OriginalProcessedPaper paper : paperPage.getContent()) {
             String subjectDisplay = paper.getSubject() == null || paper.getSubject().isBlank()
                 ? "Unassigned"
                 : paper.getSubject().trim();
-            int questionCount = questions == null ? 0 : questions.size();
+            int questionCount = resolveStoredQuestionCount(paper);
             String questionCountLabel = questionCount + " questions";
-            String combinedText = normalize(paper.getExamName());
-
-            if (!normalizedSearch.isEmpty() && !combinedText.contains(normalizedSearch)) {
-                continue;
-            }
 
             Map<String, Object> row = new HashMap<>();
             String ownerEmail = paper.getTeacherEmail() == null ? "" : paper.getTeacherEmail().trim();
-            boolean isOwnedByCurrentTeacher = matchesTeacherOwner(teacherEmail, ownerEmail);
             row.put("examId", paper.getExamId());
             row.put("examName", paper.getExamName());
             row.put("subject", paper.getSubject());
@@ -415,20 +419,20 @@ public class TeacherController {
             row.put("subjectBadge", subjectDisplay);
             row.put("activityType", paper.getActivityType());
             row.put("uploadedAt", paper.getProcessedAt());
-            row.put("questions", questions);
             row.put("questionCount", questionCount);
             row.put("questionCountLabel", questionCountLabel);
             row.put("questionBadge", questionCountLabel);
             row.put("ownerEmail", ownerEmail);
-            row.put("isOwnedByCurrentTeacher", isOwnedByCurrentTeacher);
-            row.put("scopeLabel", isOwnedByCurrentTeacher ? "My Paper" : "Department Library");
-            row.put("scopeClass", isOwnedByCurrentTeacher ? "processed-scope-owned" : "processed-scope-shared");
+            row.put("isOwnedByCurrentTeacher", true);
+            row.put("scopeLabel", "My Paper");
+            row.put("scopeClass", "processed-scope-owned");
             processedExams.add(row);
         }
 
         model.addAttribute("search", search == null ? "" : search);
         model.addAttribute("processedExams", processedExams);
-        model.addAttribute("totalProcessed", processedExams.size());
+        model.addAttribute("totalProcessed", paperPage.getTotalElements());
+        addPagingAttributes(model, paperPage, safePageSize);
         return "teacher-processed-papers";
     }
 
@@ -439,6 +443,59 @@ public class TeacherController {
             redirectAttributes.addAttribute("search", search);
         }
         return "redirect:/teacher/processed-papers";
+    }
+
+    @GetMapping("/department-papers")
+    public String departmentPapers(@RequestParam(name = "search", required = false) String search,
+                                   @RequestParam(name = "page", defaultValue = "0") Integer page,
+                                   @RequestParam(name = "size", defaultValue = "20") Integer size,
+                                   Model model,
+                                   Principal principal) {
+        String teacherEmail = principal != null ? principal.getName() : "";
+        String currentTeacherEmail = teacherEmail == null ? "" : teacherEmail.trim();
+        String currentDepartment = userRepository.findByEmail(currentTeacherEmail)
+            .map(User::getDepartmentName)
+            .map(String::trim)
+            .orElse("");
+        boolean departmentPullEnabled = isDepartmentTeacherPullEnabled(currentDepartment);
+        int safePage = Math.max(0, page == null ? 0 : page);
+        int safePageSize = normalizePageSize(size);
+        Page<OriginalProcessedPaper> sharedPage = findDepartmentSharedPapersForTeacher(
+            currentTeacherEmail,
+            currentDepartment,
+            search,
+            safePage,
+            safePageSize
+        );
+
+        List<Map<String, Object>> sharedExams = new ArrayList<>();
+        for (OriginalProcessedPaper paper : sharedPage.getContent()) {
+            String subjectDisplay = paper.getSubject() == null || paper.getSubject().isBlank()
+                ? "Unassigned"
+                : paper.getSubject().trim();
+            int questionCount = resolveStoredQuestionCount(paper);
+            String questionCountLabel = questionCount + " questions";
+
+            Map<String, Object> row = new HashMap<>();
+            row.put("examId", paper.getExamId());
+            row.put("examName", paper.getExamName());
+            row.put("subject", paper.getSubject());
+            row.put("subjectBadge", subjectDisplay);
+            row.put("activityType", paper.getActivityType());
+            row.put("uploadedAt", paper.getProcessedAt());
+            row.put("questionCount", questionCount);
+            row.put("questionBadge", questionCountLabel);
+            row.put("ownerEmail", paper.getTeacherEmail() == null ? "" : paper.getTeacherEmail().trim());
+            sharedExams.add(row);
+        }
+
+        model.addAttribute("search", search == null ? "" : search);
+        model.addAttribute("sharedExams", sharedExams);
+        model.addAttribute("departmentName", currentDepartment);
+        model.addAttribute("departmentPullEnabled", departmentPullEnabled);
+        model.addAttribute("totalShared", sharedPage.getTotalElements());
+        addPagingAttributes(model, sharedPage, safePageSize);
+        return "teacher-department-papers";
     }
 
     @GetMapping("/question-bank")
@@ -690,6 +747,13 @@ public class TeacherController {
             gson.toJson(difficulties),
             gson.toJson(answerKey)
         );
+        paper.setQuestionCount(questions.size());
+
+        String teacherDepartment = userRepository.findByEmail(principal.getName())
+            .map(User::getDepartmentName)
+            .map(String::trim)
+            .orElse("");
+        paper.setDepartmentName(teacherDepartment);
 
         originalProcessedPaperRepository.save(paper);
         syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
@@ -742,6 +806,13 @@ public class TeacherController {
                 gson.toJson(difficulties),
                 gson.toJson(answerKeyMap)
             );
+            paper.setQuestionCount(questions.size());
+
+            String teacherDepartment = userRepository.findByEmail(principal.getName())
+                .map(User::getDepartmentName)
+                .map(String::trim)
+                .orElse("");
+            paper.setDepartmentName(teacherDepartment);
 
             UploadStorageService.StoredFile storedExamFile = uploadStorageService.store(
                 "processed-exams",
@@ -784,27 +855,49 @@ public class TeacherController {
         OriginalProcessedPaper paper = paperOpt.get();
         boolean isOwnedByCurrentTeacher = matchesTeacherOwner(currentTeacherEmail, paper.getTeacherEmail());
         if (!isOwnedByCurrentTeacher) {
-            User currentTeacher = currentTeacherEmail.isBlank() ? null : userRepository.findByEmail(currentTeacherEmail).orElse(null);
-            String currentDepartment = currentTeacher == null ? "" : (currentTeacher.getDepartmentName() == null ? "" : currentTeacher.getDepartmentName().trim());
+            return "redirect:/teacher/processed-papers";
+        }
 
-            User owner = paper.getTeacherEmail() == null || paper.getTeacherEmail().isBlank()
-                ? null
-                : userRepository.findByEmail(paper.getTeacherEmail().trim()).orElse(null);
-            String sourceDepartment = paper.getDepartmentName() == null ? "" : paper.getDepartmentName().trim();
-            if (sourceDepartment.isBlank() && owner != null && owner.getDepartmentName() != null) {
-                sourceDepartment = owner.getDepartmentName().trim();
-            }
+        return renderProcessedPaperDetail(paper, true, questionSearch, false, model);
+    }
 
-            if (!currentDepartment.isBlank()
-                && !sourceDepartment.isBlank()
-                && !currentDepartment.equalsIgnoreCase(sourceDepartment)) {
-                return "redirect:/teacher/processed-papers";
-            }
+    @GetMapping("/department-papers/{examId}")
+    public String departmentPaperDetail(@PathVariable("examId") String examId,
+                                        @RequestParam(name = "questionSearch", required = false) String questionSearch,
+                                        Model model,
+                                        Principal principal) {
+        String currentTeacherEmail = principal == null ? "" : (principal.getName() == null ? "" : principal.getName().trim());
+        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(examId);
+        if (paperOpt.isEmpty()) {
+            return "redirect:/teacher/department-papers";
+        }
+
+        OriginalProcessedPaper paper = paperOpt.get();
+        String currentDepartment = userRepository.findByEmail(currentTeacherEmail)
+            .map(User::getDepartmentName)
+            .map(String::trim)
+            .orElse("");
+
+        if (!isDepartmentPaperVisibleToTeacher(paper, currentTeacherEmail, currentDepartment, new HashMap<>())) {
+            return "redirect:/teacher/department-papers";
+        }
+
+        return renderProcessedPaperDetail(paper, false, questionSearch, true, model);
+    }
+
+    private String renderProcessedPaperDetail(OriginalProcessedPaper paper,
+                                              boolean isOwnedByCurrentTeacher,
+                                              String questionSearch,
+                                              boolean backToDepartmentPapers,
+                                              Model model) {
+        if (paper == null) {
+            return "redirect:/teacher/processed-papers";
         }
 
         List<Map<String, Object>> questions = parseQuestionsJson(paper.getOriginalQuestionsJson());
         if (normalizeQuestionRowsInPlace(questions)) {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
+            paper.setQuestionCount(questions.size());
             originalProcessedPaperRepository.save(paper);
         }
         Map<String, String> answerKey = parseSimpleMapJson(paper.getAnswerKeyJson());
@@ -835,6 +928,7 @@ public class TeacherController {
 
             Map<String, Object> row = new HashMap<>();
             row.put("number", displayNumber++);
+            row.put("sourceNumber", index + 1);
             row.put("question", questionPreview);
             row.put("answer", answerText);
             row.put("difficulty", difficulty);
@@ -853,6 +947,7 @@ public class TeacherController {
         model.addAttribute("isOwnedByCurrentTeacher", isOwnedByCurrentTeacher);
         model.addAttribute("questionRows", questionRows);
         model.addAttribute("questionSearch", questionSearch == null ? "" : questionSearch);
+        model.addAttribute("backToDepartmentPapers", backToDepartmentPapers);
         return "teacher-processed-paper-detail";
     }
 
@@ -866,6 +961,16 @@ public class TeacherController {
         return "redirect:/teacher/processed-papers/" + examId;
     }
 
+    @PostMapping("/department-papers/{examId}")
+    public String departmentPaperDetailPostRedirect(@PathVariable("examId") String examId,
+                                                    @RequestParam(name = "questionSearch", required = false) String questionSearch,
+                                                    RedirectAttributes redirectAttributes) {
+        if (questionSearch != null && !questionSearch.isBlank()) {
+            redirectAttributes.addAttribute("questionSearch", questionSearch);
+        }
+        return "redirect:/teacher/department-papers/" + examId;
+    }
+
     @PostMapping("/processed-papers/{examId}/pull")
     public String pullProcessedPaper(@PathVariable("examId") String examId,
                                      Principal principal,
@@ -873,13 +978,13 @@ public class TeacherController {
         String currentTeacherEmail = principal == null ? "" : (principal.getName() == null ? "" : principal.getName().trim());
         if (currentTeacherEmail.isBlank()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Unable to identify teacher account.");
-            return "redirect:/teacher/processed-papers";
+            return "redirect:/teacher/department-papers";
         }
 
         Optional<OriginalProcessedPaper> sourceOpt = originalProcessedPaperRepository.findByExamId(examId);
         if (sourceOpt.isEmpty()) {
             redirectAttributes.addFlashAttribute("errorMessage", "Processed paper not found.");
-            return "redirect:/teacher/processed-papers";
+            return "redirect:/teacher/department-papers";
         }
 
         OriginalProcessedPaper source = sourceOpt.get();
@@ -891,20 +996,11 @@ public class TeacherController {
         User currentTeacher = userRepository.findByEmail(currentTeacherEmail).orElse(null);
         String currentDepartment = currentTeacher == null ? "" : (currentTeacher.getDepartmentName() == null ? "" : currentTeacher.getDepartmentName().trim());
 
-        User owner = source.getTeacherEmail() == null || source.getTeacherEmail().isBlank()
-            ? null
-            : userRepository.findByEmail(source.getTeacherEmail().trim()).orElse(null);
-
-        String sourceDepartment = source.getDepartmentName() == null ? "" : source.getDepartmentName().trim();
-        if (sourceDepartment.isBlank() && owner != null && owner.getDepartmentName() != null) {
-            sourceDepartment = owner.getDepartmentName().trim();
-        }
-
-        if (!currentDepartment.isBlank()
-            && !sourceDepartment.isBlank()
-            && !currentDepartment.equalsIgnoreCase(sourceDepartment)) {
-            redirectAttributes.addFlashAttribute("errorMessage", "You can only pull papers from your department library.");
-            return "redirect:/teacher/processed-papers";
+        Map<String, String> ownerDepartmentCache = new HashMap<>();
+        String sourceDepartment = resolvePaperDepartment(source, ownerDepartmentCache);
+        if (!isDepartmentPaperVisibleToTeacher(source, currentTeacherEmail, currentDepartment, ownerDepartmentCache)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "This paper is not shared with your account.");
+            return "redirect:/teacher/department-papers";
         }
 
         String copiedExamId = "EXAM_" + UUID.randomUUID().toString().replace("-", "");
@@ -921,6 +1017,7 @@ public class TeacherController {
             source.getDifficultiesJson(),
             source.getAnswerKeyJson()
         );
+        clone.setQuestionCount(resolveStoredQuestionCount(source));
 
         clone.setDepartmentName(currentDepartment.isBlank() ? sourceDepartment : currentDepartment);
         clone.setSourceFilePath(source.getSourceFilePath());
@@ -941,6 +1038,130 @@ public class TeacherController {
         redirectAttributes.addFlashAttribute(
             "successMessage",
             "Paper pulled successfully as \"" + clonedExamName + "\". You can now edit and add questions."
+        );
+        return "redirect:/teacher/manage-questions/" + copiedExamId;
+    }
+
+    @PostMapping("/processed-papers/{examId}/pick-questions")
+    public String createQuizFromSelectedQuestions(@PathVariable("examId") String examId,
+                                                   @RequestParam(name = "selectedQuestionNumbers", required = false) List<Integer> selectedQuestionNumbers,
+                                                   @RequestParam(name = "examName", required = false) String examName,
+                                                   Principal principal,
+                                                   RedirectAttributes redirectAttributes) {
+        String currentTeacherEmail = principal == null ? "" : (principal.getName() == null ? "" : principal.getName().trim());
+        if (currentTeacherEmail.isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to identify teacher account.");
+            return "redirect:/teacher/department-papers";
+        }
+
+        Optional<OriginalProcessedPaper> sourceOpt = originalProcessedPaperRepository.findByExamId(examId);
+        if (sourceOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Processed paper not found.");
+            return "redirect:/teacher/department-papers";
+        }
+
+        OriginalProcessedPaper source = sourceOpt.get();
+        User currentTeacher = userRepository.findByEmail(currentTeacherEmail).orElse(null);
+        String currentDepartment = currentTeacher == null ? "" : (currentTeacher.getDepartmentName() == null ? "" : currentTeacher.getDepartmentName().trim());
+
+        User owner = source.getTeacherEmail() == null || source.getTeacherEmail().isBlank()
+            ? null
+            : userRepository.findByEmail(source.getTeacherEmail().trim()).orElse(null);
+
+        Map<String, String> ownerDepartmentCache = new HashMap<>();
+        if (owner != null && owner.getEmail() != null) {
+            ownerDepartmentCache.put(normalize(owner.getEmail()), owner.getDepartmentName() == null ? "" : owner.getDepartmentName().trim());
+        }
+
+        String sourceDepartment = resolvePaperDepartment(source, ownerDepartmentCache);
+
+        boolean sameOwner = matchesTeacherOwner(currentTeacherEmail, source.getTeacherEmail());
+        if (!sameOwner && !isDepartmentPaperVisibleToTeacher(source, currentTeacherEmail, currentDepartment, ownerDepartmentCache)) {
+            redirectAttributes.addFlashAttribute("errorMessage", "This paper is not shared with your account.");
+            return "redirect:/teacher/department-papers/" + examId;
+        }
+
+        LinkedHashSet<Integer> selected = new LinkedHashSet<>();
+        if (selectedQuestionNumbers != null) {
+            for (Integer selectedQuestionNumber : selectedQuestionNumbers) {
+                if (selectedQuestionNumber != null && selectedQuestionNumber > 0) {
+                    selected.add(selectedQuestionNumber);
+                }
+            }
+        }
+
+        if (selected.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Select at least one question to create your quiz.");
+            return "redirect:/teacher/department-papers/" + examId;
+        }
+
+        List<Map<String, Object>> sourceQuestions = parseQuestionsJson(source.getOriginalQuestionsJson());
+        Map<String, String> sourceDifficulties = parseSimpleMapJson(source.getDifficultiesJson());
+        Map<String, String> sourceAnswerKey = parseSimpleMapJson(source.getAnswerKeyJson());
+
+        List<Map<String, Object>> selectedQuestions = new ArrayList<>();
+        Map<String, String> selectedDifficulties = new LinkedHashMap<>();
+        Map<String, String> selectedAnswerKey = new LinkedHashMap<>();
+
+        for (Integer sourceNumber : selected) {
+            int sourceIndex = sourceNumber - 1;
+            if (sourceIndex < 0 || sourceIndex >= sourceQuestions.size()) {
+                continue;
+            }
+
+            Map<String, Object> sourceRow = sourceQuestions.get(sourceIndex);
+            selectedQuestions.add(sourceRow == null ? new LinkedHashMap<>() : new LinkedHashMap<>(sourceRow));
+
+            int newIndex = selectedQuestions.size();
+            String sourceKey = String.valueOf(sourceNumber);
+            String targetKey = String.valueOf(newIndex);
+            selectedDifficulties.put(targetKey, sourceDifficulties.getOrDefault(sourceKey, "Medium"));
+            selectedAnswerKey.put(targetKey, sourceAnswerKey.getOrDefault(sourceKey, ""));
+        }
+
+        if (selectedQuestions.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Selected questions could not be resolved.");
+            return "redirect:/teacher/department-papers/" + examId;
+        }
+
+        String requestedExamName = examName == null ? "" : examName.trim();
+        if (requestedExamName.isBlank()) {
+            requestedExamName = (source.getExamName() == null || source.getExamName().isBlank())
+                ? "Picked Quiz"
+                : source.getExamName().trim() + " (Selected)";
+        }
+
+        String uniqueExamName = ensureUniqueExamNameForTeacher(currentTeacherEmail, requestedExamName);
+        String copiedExamId = "EXAM_" + UUID.randomUUID().toString().replace("-", "");
+
+        OriginalProcessedPaper clone = new OriginalProcessedPaper(
+            copiedExamId,
+            currentTeacherEmail,
+            uniqueExamName,
+            source.getSubject(),
+            source.getActivityType(),
+            source.getSourceFilename(),
+            gson.toJson(selectedQuestions),
+            gson.toJson(selectedDifficulties),
+            gson.toJson(selectedAnswerKey)
+        );
+        clone.setQuestionCount(selectedQuestions.size());
+
+        clone.setDepartmentName(currentDepartment.isBlank() ? sourceDepartment : currentDepartment);
+        clone.setSourceFilePath(source.getSourceFilePath());
+        clone.setSourceFileChecksum(source.getSourceFileChecksum());
+        clone.setSourceFileSize(source.getSourceFileSize());
+        clone.setAnswerKeyFilename(source.getAnswerKeyFilename());
+        clone.setAnswerKeyFilePath(source.getAnswerKeyFilePath());
+        clone.setAnswerKeyFileChecksum(source.getAnswerKeyFileChecksum());
+        clone.setAnswerKeyFileSize(source.getAnswerKeyFileSize());
+
+        originalProcessedPaperRepository.save(clone);
+        syncQuestionBankForPaper(clone, selectedQuestions, selectedDifficulties, selectedAnswerKey);
+
+        redirectAttributes.addFlashAttribute(
+            "successMessage",
+            "Created \"" + uniqueExamName + "\" from selected questions."
         );
         return "redirect:/teacher/manage-questions/" + copiedExamId;
     }
@@ -1006,6 +1227,7 @@ public class TeacherController {
 
         if (repaired > 0) {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
+            paper.setQuestionCount(questions.size());
             originalProcessedPaperRepository.save(paper);
             syncQuestionBankForPaper(paper, questions, difficulties, answerKey);
             redirectAttributes.addFlashAttribute("successMessage", repaired + " question row(s) repaired.");
@@ -1035,6 +1257,7 @@ public class TeacherController {
         List<Map<String, Object>> questionRows = parseQuestionsJson(paper.getOriginalQuestionsJson());
         if (normalizeQuestionRowsInPlace(questionRows)) {
             paper.setOriginalQuestionsJson(gson.toJson(questionRows));
+            paper.setQuestionCount(questionRows.size());
             originalProcessedPaperRepository.save(paper);
         }
         Map<String, String> answerKeyMap = parseSimpleMapJson(paper.getAnswerKeyJson());
@@ -1148,6 +1371,7 @@ public class TeacherController {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
             paper.setDifficultiesJson(gson.toJson(difficulties));
             paper.setAnswerKeyJson(gson.toJson(answerKey));
+            paper.setQuestionCount(questions.size());
             originalProcessedPaperRepository.save(paper);
 
             try {
@@ -1219,6 +1443,7 @@ public class TeacherController {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
             paper.setDifficultiesJson(gson.toJson(difficulties));
             paper.setAnswerKeyJson(gson.toJson(answerKey));
+            paper.setQuestionCount(questions.size());
             originalProcessedPaperRepository.save(paper);
 
             try {
@@ -1273,6 +1498,7 @@ public class TeacherController {
             paper.setOriginalQuestionsJson(gson.toJson(questions));
             paper.setDifficultiesJson(gson.toJson(difficulties));
             paper.setAnswerKeyJson(gson.toJson(answerKey));
+            paper.setQuestionCount(questions.size());
             originalProcessedPaperRepository.save(paper);
 
             try {
@@ -4425,6 +4651,186 @@ public class TeacherController {
         }
     }
 
+    private Page<OriginalProcessedPaper> findDepartmentSharedPapersForTeacher(String teacherEmail,
+                                                                               String currentDepartment,
+                                                                               String search,
+                                                                               int page,
+                                                                               int pageSize) {
+        String normalizedTeacherEmail = normalize(teacherEmail);
+        if (normalizedTeacherEmail.isBlank() || currentDepartment == null || currentDepartment.isBlank()) {
+            return Page.empty();
+        }
+
+        if (!isDepartmentTeacherPullEnabled(currentDepartment)) {
+            return Page.empty();
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(0, page), normalizePageSize(pageSize));
+        String normalizedSearch = search == null ? "" : search.trim();
+        if (normalizedSearch.isBlank()) {
+            return originalProcessedPaperRepository
+                .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseOrderByProcessedAtDesc(
+                    currentDepartment,
+                    teacherEmail,
+                    pageable
+                );
+        }
+
+        return originalProcessedPaperRepository
+            .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
+                currentDepartment,
+                teacherEmail,
+                normalizedSearch,
+                pageable
+            );
+    }
+
+    private Page<OriginalProcessedPaper> findTeacherProcessedPapersPage(String teacherEmail,
+                                                                         String search,
+                                                                         int page,
+                                                                         int pageSize) {
+        String rawTeacherEmail = teacherEmail == null ? "" : teacherEmail.trim();
+        if (rawTeacherEmail.isBlank()) {
+            return Page.empty();
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(0, page), normalizePageSize(pageSize));
+        String normalizedSearch = search == null ? "" : search.trim();
+        if (normalizedSearch.isBlank()) {
+            return originalProcessedPaperRepository
+                .findByTeacherEmailIgnoreCaseOrderByProcessedAtDesc(rawTeacherEmail, pageable);
+        }
+
+        return originalProcessedPaperRepository
+            .findByTeacherEmailIgnoreCaseAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
+                rawTeacherEmail,
+                normalizedSearch,
+                pageable
+            );
+    }
+
+    private int normalizePageSize(Integer size) {
+        int candidate = size == null ? DEFAULT_LIST_PAGE_SIZE : size;
+        if (candidate <= 0) {
+            return DEFAULT_LIST_PAGE_SIZE;
+        }
+        return Math.min(candidate, MAX_LIST_PAGE_SIZE);
+    }
+
+    private void addPagingAttributes(Model model, Page<?> pageData, int pageSize) {
+        if (model == null || pageData == null) {
+            return;
+        }
+
+        model.addAttribute("currentPage", pageData.getNumber());
+        model.addAttribute("pageSize", pageSize);
+        model.addAttribute("totalPages", pageData.getTotalPages());
+        model.addAttribute("hasPrev", pageData.hasPrevious());
+        model.addAttribute("hasNext", pageData.hasNext());
+        model.addAttribute("prevPage", pageData.hasPrevious() ? pageData.getNumber() - 1 : 0);
+        model.addAttribute("nextPage", pageData.hasNext() ? pageData.getNumber() + 1 : pageData.getNumber());
+    }
+
+    private int resolveStoredQuestionCount(OriginalProcessedPaper paper) {
+        if (paper == null) {
+            return 0;
+        }
+
+        Integer storedCount = paper.getQuestionCount();
+        if (storedCount != null && storedCount >= 0) {
+            return storedCount;
+        }
+
+        int computedCount = countQuestionsJson(paper.getOriginalQuestionsJson());
+        paper.setQuestionCount(computedCount);
+        originalProcessedPaperRepository.save(paper);
+        return computedCount;
+    }
+
+    private int countQuestionsJson(String json) {
+        if (json == null || json.isBlank()) {
+            return 0;
+        }
+        try {
+            List<?> parsed = gson.fromJson(json, new TypeToken<List<?>>() { }.getType());
+            return parsed == null ? 0 : parsed.size();
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private String resolvePaperDepartment(OriginalProcessedPaper paper, Map<String, String> ownerDepartmentCache) {
+        if (paper == null) {
+            return "";
+        }
+
+        String paperDepartment = paper.getDepartmentName() == null ? "" : paper.getDepartmentName().trim();
+        if (!paperDepartment.isBlank()) {
+            return paperDepartment;
+        }
+
+        String ownerEmailRaw = paper.getTeacherEmail() == null ? "" : paper.getTeacherEmail().trim();
+        String ownerEmail = normalize(ownerEmailRaw);
+        if (ownerEmail.isBlank()) {
+            return "";
+        }
+
+        if (ownerDepartmentCache != null && ownerDepartmentCache.containsKey(ownerEmail)) {
+            return ownerDepartmentCache.get(ownerEmail);
+        }
+
+        String resolved = userRepository.findByEmail(ownerEmailRaw)
+            .map(User::getDepartmentName)
+            .map(String::trim)
+            .orElse("");
+
+        if (ownerDepartmentCache != null) {
+            ownerDepartmentCache.put(ownerEmail, resolved);
+        }
+        return resolved;
+    }
+
+    private boolean isDepartmentPaperVisibleToTeacher(OriginalProcessedPaper paper,
+                                                      String teacherEmail,
+                                                      String currentDepartment,
+                                                      Map<String, String> ownerDepartmentCache) {
+        if (paper == null) {
+            return false;
+        }
+
+        String normalizedTeacherEmail = normalize(teacherEmail);
+        if (normalizedTeacherEmail.isBlank() || currentDepartment == null || currentDepartment.isBlank()) {
+            return false;
+        }
+
+        if (!isDepartmentTeacherPullEnabled(currentDepartment)) {
+            return false;
+        }
+
+        if (matchesTeacherOwner(normalizedTeacherEmail, paper.getTeacherEmail())) {
+            return false;
+        }
+
+        String sourceDepartment = paper.getDepartmentName() == null ? "" : paper.getDepartmentName().trim();
+        if (sourceDepartment.isBlank() || !sourceDepartment.equalsIgnoreCase(currentDepartment)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean isDepartmentTeacherPullEnabled(String departmentName) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return false;
+        }
+
+        return departmentSharingSettingRepository
+            .findByDepartmentNameIgnoreCase(normalizedDepartment)
+            .map(DepartmentSharingSetting::isTeacherPullEnabled)
+            .orElse(false);
+    }
+
     private List<OriginalProcessedPaper> findTeacherProcessedPapers(String teacherEmail) {
         String rawTeacherEmail = teacherEmail == null ? "" : teacherEmail.trim();
         if (rawTeacherEmail.isBlank()) {
@@ -4432,17 +4838,17 @@ public class TeacherController {
         }
 
         List<OriginalProcessedPaper> directMatches =
-            originalProcessedPaperRepository.findByTeacherEmailOrderByProcessedAtDesc(rawTeacherEmail);
+            originalProcessedPaperRepository.findByTeacherEmailIgnoreCaseOrderByProcessedAtDesc(rawTeacherEmail);
         if (!directMatches.isEmpty()) {
             return directMatches;
         }
 
         String normalizedTeacherEmail = normalize(rawTeacherEmail);
-        return originalProcessedPaperRepository.findAll().stream()
-            .filter(paper -> matchesTeacherOwner(normalizedTeacherEmail, paper.getTeacherEmail()))
-            .sorted(Comparator.comparing(OriginalProcessedPaper::getProcessedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())))
-            .toList();
+        if (normalizedTeacherEmail.isBlank() || normalizedTeacherEmail.equalsIgnoreCase(rawTeacherEmail)) {
+            return new ArrayList<>();
+        }
+
+        return originalProcessedPaperRepository.findByTeacherEmailOrderByProcessedAtDesc(normalizedTeacherEmail);
     }
 
     private boolean matchesTeacherOwner(String teacherEmail, String ownerEmail) {

@@ -4,7 +4,12 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "subjects")
+@Table(
+    name = "subjects",
+    indexes = {
+        @Index(name = "idx_subject_teacher", columnList = "teacher_email")
+    }
+)
 public class Subject {
     
     @Id
@@ -17,7 +22,7 @@ public class Subject {
     @Column
     private String description;
     
-    @Column(nullable = false)
+    @Column(name = "teacher_email", nullable = false)
     private String teacherEmail;
     
     @Column(nullable = false)

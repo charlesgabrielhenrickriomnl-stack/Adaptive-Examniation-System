@@ -2,11 +2,15 @@ package com.exam.entity;
 
 import java.time.LocalDateTime;
 
+import com.exam.persistence.CompressedJsonConverter;
+
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 /**
@@ -19,7 +23,14 @@ import jakarta.persistence.Table;
  * submission status, question indexes, and OTP fields.
  */
 @Entity
-@Table(name = "distributed_exams")
+@Table(
+    name = "distributed_exams",
+    indexes = {
+        @Index(name = "idx_distributed_student_submitted", columnList = "student_email, submitted"),
+        @Index(name = "idx_distributed_exam", columnList = "exam_id"),
+        @Index(name = "idx_distributed_subject_submitted", columnList = "subject, submitted")
+    }
+)
 public class DistributedExam {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -52,6 +63,7 @@ public class DistributedExam {
     @Column(nullable = false)
     private boolean submitted = false;
 
+    @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "question_indexes_json", columnDefinition = "TEXT")
     private String questionIndexesJson;
 

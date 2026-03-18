@@ -27,12 +27,14 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import com.exam.config.AcademicCatalog;
 import com.exam.entity.DepartmentProgram;
+import com.exam.entity.DepartmentSharingSetting;
 import com.exam.entity.EnrolledStudent;
 import com.exam.entity.OriginalProcessedPaper;
 import com.exam.entity.QuestionBankItem;
 import com.exam.entity.Subject;
 import com.exam.entity.User;
 import com.exam.repository.DepartmentProgramRepository;
+import com.exam.repository.DepartmentSharingSettingRepository;
 import com.exam.repository.EnrolledStudentRepository;
 import com.exam.repository.OriginalProcessedPaperRepository;
 import com.exam.repository.SubjectRepository;
@@ -50,6 +52,7 @@ public class DepartmentAdminController {
     private final SubjectRepository subjectRepository;
     private final EnrolledStudentRepository enrolledStudentRepository;
     private final DepartmentProgramRepository departmentProgramRepository;
+    private final DepartmentSharingSettingRepository departmentSharingSettingRepository;
     private final OriginalProcessedPaperRepository originalProcessedPaperRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Gson gson = new Gson();
@@ -58,12 +61,14 @@ public class DepartmentAdminController {
                                      SubjectRepository subjectRepository,
                                      EnrolledStudentRepository enrolledStudentRepository,
                                      DepartmentProgramRepository departmentProgramRepository,
+                                     DepartmentSharingSettingRepository departmentSharingSettingRepository,
                                      OriginalProcessedPaperRepository originalProcessedPaperRepository,
                                      BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.subjectRepository = subjectRepository;
         this.enrolledStudentRepository = enrolledStudentRepository;
         this.departmentProgramRepository = departmentProgramRepository;
+        this.departmentSharingSettingRepository = departmentSharingSettingRepository;
         this.originalProcessedPaperRepository = originalProcessedPaperRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -223,7 +228,43 @@ public class DepartmentAdminController {
         model.addAttribute("programCards", programCards);
         model.addAttribute("departmentPrograms", departmentPrograms);
         model.addAttribute("currentUserDepartment", departmentName);
+        model.addAttribute("departmentTeacherPullEnabled", isDepartmentTeacherPullEnabled(departmentName));
         return "department-admin-dashboard";
+    }
+
+    @PostMapping("/sharing/teacher-pull")
+    public String updateDepartmentTeacherPullSharing(@RequestParam(name = "enabled", required = false) Boolean enabled,
+                                                     Principal principal,
+                                                     RedirectAttributes redirectAttributes) {
+        String adminEmail = principal != null ? principal.getName() : "";
+        User currentAdmin = adminEmail.isBlank() ? null : userRepository.findByEmail(adminEmail).orElse(null);
+        if (currentAdmin == null || currentAdmin.getRole() != User.Role.DEPARTMENT_ADMIN) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Only Department Admin can update sharing settings.");
+            return "redirect:/department-admin/dashboard";
+        }
+
+        String departmentName = currentAdmin.getDepartmentName() == null ? "" : currentAdmin.getDepartmentName().trim();
+        if (departmentName.isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Your account has no department assigned.");
+            return "redirect:/department-admin/dashboard";
+        }
+
+        DepartmentSharingSetting setting = departmentSharingSettingRepository
+            .findByDepartmentNameIgnoreCase(departmentName)
+            .orElseGet(DepartmentSharingSetting::new);
+
+        setting.setDepartmentName(departmentName);
+        setting.setTeacherPullEnabled(Boolean.TRUE.equals(enabled));
+        setting.setUpdatedByEmail(adminEmail);
+        departmentSharingSettingRepository.save(setting);
+
+        redirectAttributes.addFlashAttribute(
+            "successMessage",
+            Boolean.TRUE.equals(enabled)
+                ? "Department sharing is ON. Teachers in this department can view and pull shared quizzes."
+                : "Department sharing is OFF. Shared quizzes are hidden from teachers."
+        );
+        return "redirect:/department-admin/dashboard";
     }
 
     @PostMapping("/programs/create")
@@ -1633,6 +1674,18 @@ public class DepartmentAdminController {
             redirect += "&programName=" + java.net.URLEncoder.encode(normalizedProgram, StandardCharsets.UTF_8);
         }
         return redirect;
+    }
+
+    private boolean isDepartmentTeacherPullEnabled(String departmentName) {
+        String normalizedDepartment = departmentName == null ? "" : departmentName.trim();
+        if (normalizedDepartment.isBlank()) {
+            return false;
+        }
+
+        return departmentSharingSettingRepository
+            .findByDepartmentNameIgnoreCase(normalizedDepartment)
+            .map(DepartmentSharingSetting::isTeacherPullEnabled)
+            .orElse(false);
     }
 
     private String[] parseCsvRow(String line) {

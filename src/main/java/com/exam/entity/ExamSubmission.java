@@ -3,14 +3,25 @@ package com.exam.entity;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
+import com.exam.persistence.CompressedJsonConverter;
+
 @Entity
-@Table(name = "exam_submissions")
+@Table(
+    name = "exam_submissions",
+    indexes = {
+        @Index(name = "idx_submission_student_submitted", columnList = "student_email, submitted_at"),
+        @Index(name = "idx_submission_exam_subject", columnList = "exam_name, subject"),
+        @Index(name = "idx_submission_release_grade", columnList = "results_released, is_graded")
+    }
+)
 public class ExamSubmission {
     
     @Id
@@ -56,6 +67,7 @@ public class ExamSubmission {
     @Column(name = "released_at")
     private LocalDateTime releasedAt;
     
+    @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "answer_details_json", columnDefinition = "TEXT")
     private String answerDetailsJson; // Store answer details as JSON
     

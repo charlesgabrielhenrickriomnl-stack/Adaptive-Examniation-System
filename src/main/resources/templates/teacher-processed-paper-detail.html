@@ -83,8 +83,9 @@
                             </button>
                         </form>
                     </div>
-                    <a th:href="@{/teacher/processed-papers}" class="btn btn-sm btn-outline-secondary paper-action-btn paper-action-back">
-                        <i class="bi bi-arrow-left me-1"></i> Back to Processed Papers
+                    <a th:href="${backToDepartmentPapers} ? @{/teacher/department-papers} : @{/teacher/processed-papers}" class="btn btn-sm btn-outline-secondary paper-action-btn paper-action-back">
+                        <i class="bi bi-arrow-left me-1"></i>
+                        <span th:text="${backToDepartmentPapers} ? 'Back to Shared Quizzes' : 'Back to Processed Papers'">Back to Processed Papers</span>
                     </a>
                 </div>
                 </div>
@@ -112,10 +113,33 @@
             </div>
 
             <div class="results-card dashboard-reveal" th:if="${questionRows != null && !questionRows.isEmpty()}">
+                <form th:if="${!isOwnedByCurrentTeacher}"
+                      th:action="@{/teacher/processed-papers/{examId}/pick-questions(examId=${exam.examId})}"
+                      method="post"
+                      id="pickQuestionsForm"
+                      class="mb-3">
+                    <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center justify-content-between">
+                        <small class="text-muted">
+                            Pick one or more questions, then create your own editable quiz copy.
+                        </small>
+                        <div class="d-flex gap-2 w-100">
+                            <input type="text"
+                                   name="examName"
+                                   class="form-control"
+                                   placeholder="New quiz name (optional)">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-plus-circle me-1"></i>Create Quiz from Selected
+                            </button>
+                        </div>
+                    </div>
+                </form>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0 paper-question-table">
                         <thead class="table-light">
                         <tr>
+                            <th th:if="${!isOwnedByCurrentTeacher}" style="width:56px;">
+                                <input class="form-check-input" type="checkbox" id="selectAllQuestions">
+                            </th>
                             <th style="width:70px;">#</th>
                             <th>Question</th>
                             <th style="width:280px;">Correct Answer</th>
@@ -124,6 +148,13 @@
                         </thead>
                         <tbody>
                         <tr th:each="row : ${questionRows}">
+                            <td th:if="${!isOwnedByCurrentTeacher}">
+                                <input class="form-check-input question-picker"
+                                       type="checkbox"
+                                       name="selectedQuestionNumbers"
+                                       form="pickQuestionsForm"
+                                       th:value="${row.sourceNumber}">
+                            </td>
                             <td class="fw-bold" th:text="${row.number}">1</td>
                             <td th:text="${row.question}">Question text</td>
                             <td>
@@ -150,6 +181,30 @@
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const selectAll = document.getElementById('selectAllQuestions');
+        if (!selectAll) {
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('.question-picker'));
+        selectAll.addEventListener('change', function () {
+            checkboxes.forEach(function (checkbox) {
+                checkbox.checked = selectAll.checked;
+            });
+        });
+
+        checkboxes.forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                const checkedCount = checkboxes.filter(function (item) {
+                    return item.checked;
+                }).length;
+                selectAll.checked = checkedCount === checkboxes.length && checkboxes.length > 0;
+            });
+        });
+    });
+</script>
 </body>
 </html>
 
