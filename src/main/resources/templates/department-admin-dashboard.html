@@ -93,11 +93,10 @@
                 </div>
                 <div class="card-body">
                     <p class="mb-2 text-muted small">
-                        Control whether teachers in this department can view and pull quizzes from the Shared Quizzes page.
+                        Master switch for department pull access. Shared Quizzes still require each quiz owner to enable sharing per quiz.
                     </p>
                     <form method="post" th:action="@{/department-admin/sharing/teacher-pull}" class="d-flex flex-column flex-md-row align-items-md-center gap-3">
                         <div class="form-check form-switch m-0">
-                            <input type="hidden" name="enabled" value="false">
                             <input class="form-check-input" type="checkbox" role="switch" id="departmentTeacherPullEnabled" name="enabled" value="true"
                                    th:checked="${departmentTeacherPullEnabled}">
                             <label class="form-check-label fw-semibold" for="departmentTeacherPullEnabled">

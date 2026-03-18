@@ -79,6 +79,7 @@
                             <th>Questions</th>
                             <th>Owner</th>
                             <th>Scope</th>
+                            <th>Shared</th>
                             <th>Processed At</th>
                             <th class="text-end">Action</th>
                         </tr>
@@ -104,11 +105,29 @@
                                       th:text="${paper.scopeLabel}">My Paper</span>
                             </td>
                             <td>
+                                <span class="processed-pill"
+                                      th:classappend="${paper.teacherPullShared} ? 'processed-scope-shared' : 'processed-scope-private'"
+                                      th:text="${paper.teacherPullShared} ? 'Shared' : 'Private'">Private</span>
+                            </td>
+                            <td>
                                 <small class="text-muted"
                                        th:text="${paper.uploadedAt != null ? #temporals.format(paper.uploadedAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</small>
                             </td>
                             <td class="text-end">
                                 <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                    <form th:action="@{/teacher/processed-papers/{examId}/share(examId=${paper.examId})}"
+                                          method="post"
+                                          class="d-inline"
+                                          th:if="${paper.isOwnedByCurrentTeacher}">
+                                        <input type="hidden" name="enabled" th:value="${paper.teacherPullShared} ? 'false' : 'true'">
+                                        <button type="submit"
+                                                class="btn processed-action-btn"
+                                                th:classappend="${paper.teacherPullShared} ? 'btn-outline-secondary' : 'btn-outline-success'"
+                                                th:title="${paper.teacherPullShared} ? 'Hide from Shared Quizzes' : 'Share to Department Shared Quizzes'">
+                                            <i class="bi me-1" th:classappend="${paper.teacherPullShared} ? 'bi-eye-slash' : 'bi-people'"></i>
+                                            <span th:text="${paper.teacherPullShared} ? 'Stop Sharing' : 'Share Quiz'">Share Quiz</span>
+                                        </button>
+                                    </form>
                                     <a th:href="@{/teacher/processed-papers/{examId}(examId=${paper.examId})}"
                                        class="btn btn-primary processed-action-btn processed-view-btn">
                                         <i class="bi bi-eye me-1"></i>View Questions

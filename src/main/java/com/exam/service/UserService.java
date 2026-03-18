@@ -63,14 +63,17 @@ public class UserService {
         student.setDepartmentName(departmentName);
         student.setProgramName(programName);
         student.setRole(User.Role.STUDENT);
-        student.setEnabled(true);
-        student.setVerificationToken(null);
-        student.setVerificationCodeHash(null);
-        student.setVerificationCodeExpiresAt(null);
-        student.setVerificationCodeSentAt(null);
+        student.setEnabled(false);
+
+        String verificationToken = issueVerificationToken(student);
         
         userRepository.save(student);
-        return "SUCCESS: Registration successful! You can now log in.";
+        boolean emailSent = emailService.sendVerificationEmail(email, fullName, verificationToken);
+        if (!emailSent) {
+            return "WARN: Account created, but we could not send the verification email link. Please try again later.";
+        }
+
+        return "SUCCESS: Registration successful! Check your email and click the verification link before logging in.";
     }
     
     /**

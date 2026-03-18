@@ -1,0 +1,21 @@
+Difficulty,Question,Choice 1,Choice 2,Choice 3,Correct Answer
+Easy,What is the primary function of the CPU?,Data storage,Processing instructions,Displaying graphics,Processing instructions
+Easy,Which HTML tag is used to create a hyperlink?,<link>,<a>,<href>,<a>
+Easy,In the water cycle what process turns liquid into gas?,Condensation,Precipitation,Evaporation,Evaporation
+Easy,"Which programming language is known as the ""language of the web""?",Python,JavaScript,C++,JavaScript
+Easy,What is the shortcut to 'Paste' on most operating systems?,Ctrl+P,Ctrl+C,Ctrl+V,Ctrl+V
+Medium,What does the 'S' in HTTPS stand for?,Secure,System,Standard,Secure
+Medium,Which data structure operates on a Last-In-First-Out (LIFO) basis?,Queue,Array,Stack,Stack
+Medium,In networking what is the purpose of a Subnet Mask?,Identify the network portion,Assign a MAC address,Encrypt data packets,Identify the network portion
+Medium,What is the result of the binary addition 1010 + 0101?,1111,1010,1100,1111
+Medium,Which SQL command is used to remove all records from a table?,DELETE,DROP,TRUNCATE,TRUNCATE
+Hard,In cryptography what is a 'Salt' used for?,Hashing passwords,Encrypting files,Speeding up SSL,Hashing passwords
+Hard,Which sorting algorithm has a worst-case time complexity of O(n^2)?,Merge Sort,Quick Sort,Heap Sort,Quick Sort
+Hard,What is the primary goal of the 'Least Privilege' principle?,Ease of access,Network security,Data redundancy,Network security
+Hard,In a Relational Database what does Atomicity ensure?,Data is compressed,Transactions are all-or-nothing,Multiple users can edit,Transactions are all-or-nothing
+Hard,Which layer of the OSI model is responsible for IP addressing?,Data Link,Transport,Network,Network
+Easy,[ESSAY] Describe the benefits of a healthy diet.,,,,Discuss how food intake impacts physical and mental health.
+Medium,[ESSAY] Explain the impact of the Industrial Revolution.,,,,Analyze how manual labor transitioned to machine manufacturing.
+Medium,[ESSAY] Discuss the importance of cybersecurity awareness.,,,,Evaluate the role of the human element in maintaining digital security.
+Hard,[ESSAY] Analyze the ethical implications of AI.,,,,Critically examine the balance between innovation and social ethics.
+Hard,[ESSAY] Explain the concept of Sustainable Development.,,,,Evaluate meeting present needs without compromising the future.

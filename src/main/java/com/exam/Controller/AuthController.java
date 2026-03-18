@@ -62,7 +62,7 @@ public class AuthController {
         if (pendingVerification != null) {
             model.addAttribute("success", "Registration successful! Check your email and click the verification link before logging in.");
         } else {
-            addIfNotNull(model, registered, "success", "Registration successful! You can now log in.");
+            addIfNotNull(model, registered, "success", "Registration successful. You can now log in.");
         }
         if (successMessage != null && !successMessage.isBlank()) {
             model.addAttribute("success", successMessage);
@@ -70,7 +70,14 @@ public class AuthController {
         addIfNotNull(model, verified, "success", "Account verified successfully. You can now log in.");
 
         if (verifyResult != null && !verifyResult.isBlank()) {
-            model.addAttribute("verifyResult", verifyResult.trim().toLowerCase());
+            String normalizedVerifyResult = verifyResult.trim().toLowerCase();
+            if ("success".equals(normalizedVerifyResult)) {
+                model.addAttribute("success", "Registration successful! Check your email and click the verification link before logging in.");
+            } else {
+                model.addAttribute("error", true);
+                model.addAttribute("errorField", "email");
+                model.addAttribute("errorMessage", "Verification link is invalid or expired.");
+            }
         }
 
         return "login";
@@ -171,7 +178,7 @@ public class AuthController {
             return "register";
         }
 
-        if ("TEACHER".equalsIgnoreCase(role)) {
+        if ("TEACHER".equalsIgnoreCase(role) || "STUDENT".equalsIgnoreCase(role)) {
             redirectAttributes.addAttribute("registered", "true");
             redirectAttributes.addAttribute("pendingVerification", "true");
             redirectAttributes.addAttribute("username", email == null ? "" : email.trim().toLowerCase());

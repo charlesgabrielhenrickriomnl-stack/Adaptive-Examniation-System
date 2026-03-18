@@ -426,6 +426,7 @@ public class TeacherController {
             row.put("isOwnedByCurrentTeacher", true);
             row.put("scopeLabel", "My Paper");
             row.put("scopeClass", "processed-scope-owned");
+            row.put("teacherPullShared", paper.isTeacherPullShared());
             processedExams.add(row);
         }
 
@@ -442,6 +443,42 @@ public class TeacherController {
         if (search != null && !search.isBlank()) {
             redirectAttributes.addAttribute("search", search);
         }
+        return "redirect:/teacher/processed-papers";
+    }
+
+    @PostMapping("/processed-papers/{examId}/share")
+    public String updateProcessedPaperShare(@PathVariable("examId") String examId,
+                                            @RequestParam(name = "enabled", required = false) Boolean enabled,
+                                            Principal principal,
+                                            RedirectAttributes redirectAttributes) {
+        String currentTeacherEmail = principal == null ? "" : (principal.getName() == null ? "" : principal.getName().trim());
+        if (currentTeacherEmail.isBlank()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Unable to identify teacher account.");
+            return "redirect:/teacher/processed-papers";
+        }
+
+        Optional<OriginalProcessedPaper> paperOpt = originalProcessedPaperRepository.findByExamId(examId);
+        if (paperOpt.isEmpty()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Processed paper not found.");
+            return "redirect:/teacher/processed-papers";
+        }
+
+        OriginalProcessedPaper paper = paperOpt.get();
+        if (!matchesTeacherOwner(currentTeacherEmail, paper.getTeacherEmail())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Only the quiz owner can update sharing for this paper.");
+            return "redirect:/teacher/processed-papers";
+        }
+
+        boolean shareEnabled = Boolean.TRUE.equals(enabled);
+        paper.setTeacherPullShared(shareEnabled);
+        originalProcessedPaperRepository.save(paper);
+
+        redirectAttributes.addFlashAttribute(
+            "successMessage",
+            shareEnabled
+                ? "Quiz sharing is ON for this paper. Teachers in your department can now pull it from Shared Quizzes."
+                : "Quiz sharing is OFF for this paper. It is now hidden from Shared Quizzes."
+        );
         return "redirect:/teacher/processed-papers";
     }
 
@@ -4669,7 +4706,7 @@ public class TeacherController {
         String normalizedSearch = search == null ? "" : search.trim();
         if (normalizedSearch.isBlank()) {
             return originalProcessedPaperRepository
-                .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseOrderByProcessedAtDesc(
+                .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndTeacherPullSharedTrueOrderByProcessedAtDesc(
                     currentDepartment,
                     teacherEmail,
                     pageable
@@ -4677,7 +4714,7 @@ public class TeacherController {
         }
 
         return originalProcessedPaperRepository
-            .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
+            .findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndTeacherPullSharedTrueAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
                 currentDepartment,
                 teacherEmail,
                 normalizedSearch,
@@ -4804,6 +4841,10 @@ public class TeacherController {
         }
 
         if (!isDepartmentTeacherPullEnabled(currentDepartment)) {
+            return false;
+        }
+
+        if (!paper.isTeacherPullShared()) {
             return false;
         }
 

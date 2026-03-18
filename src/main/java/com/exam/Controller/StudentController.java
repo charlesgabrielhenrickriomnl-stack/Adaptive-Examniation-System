@@ -61,8 +61,15 @@ public class StudentController {
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<\\/?[a-z][\\s\\S]*?>", Pattern.CASE_INSENSITIVE);
     private static final Pattern ESCAPED_HTML_TAG_PATTERN = Pattern.compile("&lt;\\/?[a-z][\\s\\S]*?&gt;", Pattern.CASE_INSENSITIVE);
     private static final String CHOICE_LABEL_REGEX = "[A-Z]{1,3}|\\d{1,4}";
+    private static final String INLINE_DOT_CHOICE_LABEL_REGEX = "[A-Z]|\\d{1,4}";
     private static final Pattern CHOICE_LINE_PATTERN = Pattern.compile("^\\s*(?:\\(?(" + CHOICE_LABEL_REGEX + ")\\)|(" + CHOICE_LABEL_REGEX + ")[.)])\\s*(.+)$", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CHOICE_MARKER_PATTERN = Pattern.compile("(?:\\(\\s*(" + CHOICE_LABEL_REGEX + ")\\s*\\)|\\b(" + CHOICE_LABEL_REGEX + ")[.)])\\s*", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHOICE_MARKER_PATTERN = Pattern.compile(
+        "(?<!\\S)(?:\\(\\s*(" + CHOICE_LABEL_REGEX + ")\\s*\\)|("
+            + CHOICE_LABEL_REGEX
+            + ")\\)|("
+            + INLINE_DOT_CHOICE_LABEL_REGEX
+            + ")\\.)(?=\\s+)",
+        Pattern.CASE_INSENSITIVE);
     private static final Pattern ANSWER_LABEL_TOKEN_PATTERN = Pattern.compile("^\\(?\\s*([A-Z]{1,3})\\s*\\)?[.)-]?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern ANSWER_NUMERIC_TOKEN_PATTERN = Pattern.compile("^\\(?\\s*(\\d{1,4})\\s*\\)?[.)-]?$", Pattern.CASE_INSENSITIVE);
     private static final String ACTIVE_EXAM_SESSION_KEY = "ACTIVE_DISTRIBUTED_EXAM_ID";

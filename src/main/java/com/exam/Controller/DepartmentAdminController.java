@@ -261,8 +261,8 @@ public class DepartmentAdminController {
         redirectAttributes.addFlashAttribute(
             "successMessage",
             Boolean.TRUE.equals(enabled)
-                ? "Department sharing is ON. Teachers in this department can view and pull shared quizzes."
-                : "Department sharing is OFF. Shared quizzes are hidden from teachers."
+                ? "Department pull access is ON. Teachers can pull only quizzes that owners marked as shared."
+                : "Department pull access is OFF. Shared quizzes are hidden from teachers."
         );
         return "redirect:/department-admin/dashboard";
     }

@@ -18,7 +18,8 @@ import com.exam.persistence.CompressedJsonConverter;
     name = "processed_papers_original",
     indexes = {
         @Index(name = "idx_processed_papers_teacher_processed", columnList = "teacher_email, processed_at"),
-        @Index(name = "idx_processed_papers_department_processed", columnList = "department_name, processed_at")
+        @Index(name = "idx_processed_papers_department_processed", columnList = "department_name, processed_at"),
+        @Index(name = "idx_processed_papers_dept_shared_processed", columnList = "department_name, teacher_pull_shared, processed_at")
     }
 )
 public class OriginalProcessedPaper {
@@ -72,6 +73,9 @@ public class OriginalProcessedPaper {
     @Column(name = "question_count")
     private Integer questionCount;
 
+    @Column(name = "teacher_pull_shared", nullable = false)
+    private boolean teacherPullShared;
+
     @Convert(converter = CompressedJsonConverter.class)
     @Column(name = "original_questions_json", columnDefinition = "LONGTEXT", nullable = false)
     private String originalQuestionsJson;
@@ -90,6 +94,7 @@ public class OriginalProcessedPaper {
     public OriginalProcessedPaper() {
         this.processedAt = LocalDateTime.now();
         this.questionCount = 0;
+        this.teacherPullShared = false;
     }
 
     public OriginalProcessedPaper(String examId,
@@ -111,6 +116,7 @@ public class OriginalProcessedPaper {
         this.difficultiesJson = difficultiesJson;
         this.answerKeyJson = answerKeyJson;
         this.questionCount = 0;
+        this.teacherPullShared = false;
         this.processedAt = LocalDateTime.now();
     }
 
@@ -161,6 +167,9 @@ public class OriginalProcessedPaper {
 
     public Integer getQuestionCount() { return questionCount; }
     public void setQuestionCount(Integer questionCount) { this.questionCount = questionCount; }
+
+    public boolean isTeacherPullShared() { return teacherPullShared; }
+    public void setTeacherPullShared(boolean teacherPullShared) { this.teacherPullShared = teacherPullShared; }
 
     public String getOriginalQuestionsJson() { return originalQuestionsJson; }
     public void setOriginalQuestionsJson(String originalQuestionsJson) { this.originalQuestionsJson = originalQuestionsJson; }

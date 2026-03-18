@@ -32,6 +32,7 @@ let isSubmitting = false;
 let isNavigationLocked = false;
 let autoSubmitScheduled = false;
 const CHOICE_LABEL_REGEX = '(?:[A-Z]{1,3}|\\d{1,4})';
+const INLINE_DOT_CHOICE_LABEL_REGEX = '(?:[A-Z]|\\d{1,4})';
 
 function decodeHtmlEntities(value) {
     const textarea = document.createElement('textarea');
@@ -150,14 +151,20 @@ function extractQuestionParts(rawQuestion) {
         }
     }
 
-    const markerPattern = new RegExp(`(?:\\(\\s*(${CHOICE_LABEL_REGEX})\\s*\\)|\\b(${CHOICE_LABEL_REGEX})[.)])\\s*`, 'gi');
+    const markerPattern = new RegExp(
+        `(?:^|\\s)(?:\\(\\s*(${CHOICE_LABEL_REGEX})\\s*\\)|(${CHOICE_LABEL_REGEX})\\)|(${INLINE_DOT_CHOICE_LABEL_REGEX})\\.)(?=\\s+)`,
+        'gi'
+    );
     const markers = [];
     let match;
     while ((match = markerPattern.exec(plain)) !== null) {
+        const fullMatch = match[0] || '';
+        const markerToken = fullMatch.trimStart();
+        const markerIndex = match.index + (fullMatch.length - markerToken.length);
         markers.push({
-            index: match.index,
-            endIndex: markerPattern.lastIndex,
-            label: (match[1] || match[2] || '').toUpperCase()
+            index: markerIndex,
+            endIndex: markerIndex + markerToken.length,
+            label: (match[1] || match[2] || match[3] || '').toUpperCase()
         });
     }
 

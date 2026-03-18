@@ -47,9 +47,6 @@
                         <i class="bi bi-inbox display-1 text-muted mb-3"></i>
                         <h4 class="text-muted">No Subjects Yet</h4>
                         <p class="text-muted">Create your first subject to get started</p>
-                        <button class="btn btn-primary subject-create-btn mt-2" data-bs-toggle="modal" data-bs-target="#createSubjectModal">
-                            <i class="bi bi-plus-circle"></i> Create First Subject
-                        </button>
                     </div>
 
                     <div th:if="${!#lists.isEmpty(subjects)}" class="subject-ops-bar dashboard-reveal">

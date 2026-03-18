@@ -27,7 +27,18 @@ public interface OriginalProcessedPaperRepository extends JpaRepository<Original
         String teacherEmail,
         Pageable pageable
     );
+    Page<OriginalProcessedPaper> findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndTeacherPullSharedTrueOrderByProcessedAtDesc(
+        String departmentName,
+        String teacherEmail,
+        Pageable pageable
+    );
     Page<OriginalProcessedPaper> findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
+        String departmentName,
+        String teacherEmail,
+        String examName,
+        Pageable pageable
+    );
+    Page<OriginalProcessedPaper> findByDepartmentNameIgnoreCaseAndTeacherEmailNotIgnoreCaseAndTeacherPullSharedTrueAndExamNameContainingIgnoreCaseOrderByProcessedAtDesc(
         String departmentName,
         String teacherEmail,
         String examName,
