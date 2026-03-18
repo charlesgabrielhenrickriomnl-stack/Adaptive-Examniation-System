@@ -1150,6 +1150,11 @@ public class DepartmentAdminController {
             .toList();
 
         Set<String> shareProgramsSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (String programOption : buildProgramOptionsForDepartment(selectedDepartment, shareTargetTeachers, currentAdmin)) {
+            if (programOption != null && !programOption.isBlank()) {
+                shareProgramsSet.add(programOption.trim());
+            }
+        }
         Map<String, List<Map<String, String>>> shareTeachersByProgram = new LinkedHashMap<>();
         for (User teacher : shareTargetTeachers) {
             String teacherEmailValue = normalizeEmail(teacher.getEmail());

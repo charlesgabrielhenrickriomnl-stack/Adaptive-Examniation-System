@@ -681,6 +681,14 @@ body.department-dashboard-page::after {
     opacity: 1;
 }
 
+body.department-dashboard-page.modal-open {
+    padding-right: 0 !important;
+}
+
+body.department-dashboard-page .modal {
+    padding-right: 0 !important;
+}
+
 .department-empty-state {
     border: 1px dashed #dec7a4;
     border-radius: 12px;

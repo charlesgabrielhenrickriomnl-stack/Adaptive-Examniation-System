@@ -276,6 +276,7 @@
     }
 
     modalElement.addEventListener('show.bs.modal', (event) => {
+        document.body.style.paddingRight = '0px';
         const trigger = event.relatedTarget;
         if (!trigger) {
             return;
@@ -303,6 +304,10 @@
     if (programSelect && programSelect.value) {
         setTeacherOptions(programSelect.value, '');
     }
+
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        document.body.style.paddingRight = '';
+    });
 })();
 </script>
 
