@@ -124,7 +124,11 @@
                                         <div class="d-flex gap-2 align-items-center flex-wrap justify-content-end">
                                             <form method="post" th:action="@{/department-admin/question-bank/quiz-sharing}" th:if="${quiz.sourceExamId != null && !#strings.isEmpty(quiz.sourceExamId)}">
                                                 <input type="hidden" name="examId" th:value="${quiz.sourceExamId}">
-                                                <input type="hidden" name="enabled" value="false">
+                                                <input type="hidden" name="enabled" th:value="${quiz.teacherPullShared ? false : true}">
+                                                <th:block th:if="${!quiz.teacherPullShared}">
+                                                    <input type="hidden" name="shareScope" value="PROGRAM">
+                                                    <input type="hidden" name="shareProgramName" th:value="${selectedProgram}">
+                                                </th:block>
                                                 <input type="hidden" name="search" th:value="${search}">
                                                 <input type="hidden" name="departmentName" th:value="${selectedDepartment}">
                                                 <input type="hidden" name="programName" th:value="${selectedProgram}">
@@ -137,9 +141,10 @@
                                                 <input type="hidden" name="teacherEmail" th:value="${selectedTeacherEmail}">
                                                 <input type="hidden" name="studentSearch" th:value="${studentSearch}">
                                                 <input type="hidden" name="quizSearch" th:value="${quizSearch}">
-                                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                                        th:classappend="${!quiz.teacherPullShared} ? ' active' : ''">
-                                                    <i class="bi bi-lock me-1"></i>Private
+                                                <button type="submit" class="btn btn-sm"
+                                                        th:classappend="${!quiz.teacherPullShared} ? 'btn-outline-success' : 'btn-outline-secondary'">
+                                                    <i class="bi" th:classappend="${!quiz.teacherPullShared} ? 'bi-unlock me-1' : 'bi-lock me-1'"></i>
+                                                    <span th:text="${!quiz.teacherPullShared} ? 'Public' : 'Private'">Private</span>
                                                 </button>
                                             </form>
                                                 <button type="button" class="btn btn-sm department-share-teacher-btn"
@@ -209,6 +214,7 @@
 
                     <div class="mb-0">
                         <label for="shareTeacherSelect" class="form-label">Teacher</label>
+                        <input type="text" id="teacherSearchInput" class="form-control form-control-sm mb-2" placeholder="Search teacher by name or email...">
                         <select class="form-select" id="shareTeacherSelect" name="shareTeacherEmail" required>
                             <option value="">Select teacher</option>
                         </select>
@@ -237,16 +243,25 @@
     const quizNameElement = document.getElementById('shareTeacherQuizName');
     const programSelect = document.getElementById('shareProgramSelect');
     const teacherSelect = document.getElementById('shareTeacherSelect');
+    const teacherSearchInput = document.getElementById('teacherSearchInput');
 
-    function setTeacherOptions(programName, selectedTeacherEmail) {
+    function setTeacherOptions(programName, selectedTeacherEmail, searchQuery = '') {
         const targetProgram = (programName || '').trim();
-        const teacherRows = Array.isArray(teachersByProgram[targetProgram]) ? teachersByProgram[targetProgram] : [];
+        let teacherRows = Array.isArray(teachersByProgram[targetProgram]) ? teachersByProgram[targetProgram] : [];
         const selectedEmail = (selectedTeacherEmail || '').trim().toLowerCase();
+
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            teacherRows = teacherRows.filter(t => 
+                (t.email && t.email.toLowerCase().includes(query)) ||
+                (t.label && t.label.toLowerCase().includes(query))
+            );
+        }
 
         teacherSelect.innerHTML = '';
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = teacherRows.length > 0 ? 'Select teacher' : 'No teachers in selected program';
+        placeholder.textContent = teacherRows.length > 0 ? 'Select teacher' : 'No teachers found';
         placeholder.selected = true;
         placeholder.disabled = teacherRows.length === 0;
         teacherSelect.appendChild(placeholder);
@@ -271,12 +286,23 @@
 
     if (programSelect) {
         programSelect.addEventListener('change', () => {
+            if (teacherSearchInput) teacherSearchInput.value = '';
             setTeacherOptions(programSelect.value, '');
         });
     }
 
+    if (teacherSearchInput) {
+        teacherSearchInput.addEventListener('input', (e) => {
+            setTeacherOptions(programSelect.value, teacherSelect.value, e.target.value);
+        });
+        teacherSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+            }
+        });
+    }
+
     modalElement.addEventListener('show.bs.modal', (event) => {
-        document.body.style.paddingRight = '0px';
         const trigger = event.relatedTarget;
         if (!trigger) {
             return;
@@ -297,6 +323,10 @@
         if (!programSelect.value && programSelect.options.length > 1) {
             programSelect.selectedIndex = 1;
         }
+        
+        if (teacherSearchInput) {
+            teacherSearchInput.value = '';
+        }
 
         setTeacherOptions(programSelect.value, currentTeacher);
     });
@@ -304,10 +334,6 @@
     if (programSelect && programSelect.value) {
         setTeacherOptions(programSelect.value, '');
     }
-
-    modalElement.addEventListener('hidden.bs.modal', () => {
-        document.body.style.paddingRight = '';
-    });
 })();
 </script>
 
