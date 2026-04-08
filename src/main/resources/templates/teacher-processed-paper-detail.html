@@ -81,15 +81,24 @@
                         </form>
                         <form th:if="${!isOwnedByCurrentTeacher}"
                               th:action="@{/teacher/processed-papers/{examId}/pull(examId=${exam.examId})}" method="post"
-                              onsubmit="return confirm('Pull this department paper to your own workspace for editing?');">
+                              onsubmit="return confirm('Add this shared quiz to the selected subject?');">
+                            <select class="form-select form-select-sm mb-2"
+                                    name="subjectId"
+                                    required
+                                    th:disabled="${#lists.isEmpty(teacherSubjects)}">
+                                <option value="">Choose subject</option>
+                                <option th:each="subject : ${teacherSubjects}"
+                                        th:value="${subject.id}"
+                                        th:text="${subject.subjectName}"></option>
+                            </select>
                             <button type="submit" class="btn btn-sm btn-outline-primary paper-action-btn">
-                                <i class="bi bi-arrow-down-circle me-1"></i> Pull to My Papers
+                                <i class="bi bi-plus-circle me-1"></i> Add to Subject
                             </button>
                         </form>
                     </div>
-                    <a th:href="${backToDepartmentPapers} ? @{/teacher/department-papers} : @{/teacher/processed-papers}" class="btn btn-sm btn-outline-secondary paper-action-btn paper-action-back">
+                    <a th:href="${backToDepartmentPapers} ? @{/teacher/department-papers} : @{/teacher/subjects}" class="btn btn-sm btn-outline-secondary paper-action-btn paper-action-back">
                         <i class="bi bi-arrow-left me-1"></i>
-                        <span th:text="${backToDepartmentPapers} ? 'Back to Shared Quizzes' : 'Back to Processed Papers'">Back to Processed Papers</span>
+                        <span th:text="${backToDepartmentPapers} ? 'Back to Shared Quizzes' : 'Back to Subjects'">Back to Subjects</span>
                     </a>
                 </div>
                 </div>

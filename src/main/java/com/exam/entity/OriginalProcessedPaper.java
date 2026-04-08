@@ -2,6 +2,8 @@ package com.exam.entity;
 
 import java.time.LocalDateTime;
 
+import com.exam.persistence.CompressedJsonConverter;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -11,13 +13,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
-import com.exam.persistence.CompressedJsonConverter;
-
 @Entity
 @Table(
     name = "processed_papers_original",
     indexes = {
         @Index(name = "idx_processed_papers_teacher_processed", columnList = "teacher_email, processed_at"),
+        @Index(name = "idx_processed_papers_subject_processed", columnList = "subject_id, processed_at"),
         @Index(name = "idx_processed_papers_department_processed", columnList = "department_name, processed_at"),
         @Index(name = "idx_processed_papers_dept_shared_processed", columnList = "department_name, teacher_pull_shared, processed_at")
     }
@@ -42,6 +43,9 @@ public class OriginalProcessedPaper {
 
     @Column(name = "exam_name", nullable = false)
     private String examName;
+
+    @Column(name = "subject_id")
+    private Long subjectId;
 
     @Column(name = "subject", nullable = false)
     private String subject;
@@ -155,6 +159,9 @@ public class OriginalProcessedPaper {
 
     public String getExamName() { return examName; }
     public void setExamName(String examName) { this.examName = examName; }
+
+    public Long getSubjectId() { return subjectId; }
+    public void setSubjectId(Long subjectId) { this.subjectId = subjectId; }
 
     public String getSubject() { return subject; }
     public void setSubject(String subject) { this.subject = subject; }

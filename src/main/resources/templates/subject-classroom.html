@@ -87,6 +87,188 @@
                 </div>
             </div>
 
+            <div class="row g-3 mb-3 subject-workspace-row">
+                <div class="col-12 col-xl-5">
+                    <div class="section-card subject-workspace-card upload-workspace-card">
+                        <div class="section-title mb-0">
+                            <i class="bi bi-upload"></i> Upload or Import Paper
+                        </div>
+                        <div class="section-divider"></div>
+                        <form th:action="@{/teacher/process-exams-upload}" method="post" enctype="multipart/form-data" class="upload-workspace-form">
+                            <input type="hidden" name="subjectId" th:value="${subject.id}">
+                            <input type="hidden" name="subject" th:value="${subject.subjectName}">
+
+                            <div class="upload-form-grid">
+                                <div class="upload-field upload-field-primary">
+                                    <label class="form-label small fw-semibold">Quiz Name (optional)</label>
+                                    <input type="text" name="quizName" class="form-control form-control-sm" maxlength="120" placeholder="e.g. Quiz 1 - Week 1">
+                                </div>
+
+                                <div class="upload-field upload-field-primary">
+                                    <label class="form-label small fw-semibold">Activity Type</label>
+                                    <select class="form-select form-select-sm" name="activityType" required>
+                                        <option value="" disabled selected>Select activity type</option>
+                                        <option value="Exam">Exam</option>
+                                        <option value="Assignment">Assignment</option>
+                                        <option value="Quiz">Quiz</option>
+                                        <option value="Practice Test">Practice Test</option>
+                                    </select>
+                                </div>
+
+                                <div class="upload-field upload-field-file">
+                                    <label class="form-label small fw-semibold">Questionnaire File (PDF/CSV)</label>
+                                    <div class="upload-file-picker">
+                                        <input id="subjectExamFileInput" class="upload-file-input" type="file" name="examCreated" accept=".pdf,.csv" required>
+                                        <label for="subjectExamFileInput" class="upload-file-trigger">Choose File</label>
+                                        <span id="subjectExamFileName" class="upload-file-name">No file chosen</span>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">Accepted formats: PDF or CSV. Max upload size follows server settings.</small>
+                                </div>
+                            </div>
+
+                            <div class="upload-form-actions">
+                                <button type="submit" class="btn btn-primary btn-sm upload-submit-btn">
+                                    <i class="bi bi-gear-fill me-1"></i> Process Into This Subject
+                                </button>
+                            </div>
+                        </form>
+
+                    </div>
+                </div>
+
+                <div class="col-12 col-xl-7">
+                    <div class="section-card subject-workspace-card papers-workspace-card">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="section-title mb-0">
+                                <i class="bi bi-file-earmark-text"></i> Subject Papers
+                            </div>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle"
+                                  th:text="${#lists.size(uploadedExams)} + ' paper(s)'">0 paper(s)</span>
+                        </div>
+                        <div class="section-divider"></div>
+
+                        <div th:if="${uploadedExams == null || uploadedExams.isEmpty()}" class="empty-state">
+                            <i class="bi bi-inbox"></i>
+                            <p class="mb-1 fw-semibold small">No papers in this subject yet.</p>
+                            <small class="text-muted">Upload a questionnaire file to start building this subject workspace.</small>
+                        </div>
+
+                        <div th:if="${uploadedExams != null && !uploadedExams.isEmpty()}" class="papers-toolbar">
+                            <div class="papers-search-group">
+                                <input id="subjectPapersSearchInput" type="search" class="form-control form-control-sm" placeholder="Search paper name, type, date..." aria-label="Search subject papers">
+                                <button id="subjectPapersSearchBtn" type="button" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-search me-1"></i>Search
+                                </button>
+                            </div>
+                            <small id="subjectPapersSearchMeta" class="text-muted"
+                                   th:text="'Showing ' + ${#lists.size(uploadedExams)} + ' of ' + ${#lists.size(uploadedExams)} + ' paper(s)'">Showing 0 of 0 paper(s)</small>
+                        </div>
+
+                        <div th:if="${uploadedExams != null && !uploadedExams.isEmpty()}" class="table-responsive papers-table-wrap">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Paper</th>
+                                        <th>Type</th>
+                                        <th>Questions</th>
+                                        <th>Processed</th>
+                                        <th class="text-end">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="subjectPapersTableBody">
+                                    <tr th:each="exam : ${uploadedExams}" class="subject-paper-row">
+                                        <td class="fw-semibold" th:text="${exam.examName}">Exam</td>
+                                        <td th:text="${exam.activityType}">Quiz</td>
+                                        <td th:text="${exam.questionCount}">0</td>
+                                        <td>
+                                            <small class="text-muted"
+                                                   th:text="${exam.processedAt != null ? #temporals.format(exam.processedAt, 'MMM dd, yyyy hh:mm a') : '-'}">-</small>
+                                        </td>
+                                        <td class="text-end">
+                                            <a class="btn btn-sm btn-outline-primary"
+                                               th:href="@{/teacher/manage-questions/{examId}(examId=${exam.examId},returnTo=${'/teacher/subject-classroom/' + subject.id})}">
+                                                <i class="bi bi-pencil-square me-1"></i>Manage
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div th:if="${uploadedExams != null && !uploadedExams.isEmpty()}" id="subjectPapersNoMatch" class="empty-state papers-no-match d-none">
+                            <i class="bi bi-search"></i>
+                            <p class="mb-1 fw-semibold small">No matching paper found.</p>
+                            <small class="text-muted">Try a different keyword (name, type, or date).</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-card format-guide-shell">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <div class="section-title mb-0">
+                        <i class="bi bi-table"></i> CSV Format Sample
+                    </div>
+                    <a th:href="@{/teacher/csv-template}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-download me-1"></i>Download Template
+                    </a>
+                </div>
+                <div class="table-responsive format-guide-table-wrap">
+                    <table class="table table-sm table-bordered align-middle mb-2 format-guide-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Difficulty</th>
+                                <th>Question_Text</th>
+                                <th>Choice_A</th>
+                                <th>Choice_B</th>
+                                <th>Choice_C</th>
+                                <th>Choice_D</th>
+                                <th>Correct_Answer</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td>Easy</td>
+                                <td>What does URL stand for?</td>
+                                <td>Uniform Resource Locator</td>
+                                <td>Universal Resource Link</td>
+                                <td></td>
+                                <td></td>
+                                <td>A</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>Medium</td>
+                                <td>Which is an input device?</td>
+                                <td>Monitor</td>
+                                <td>Keyboard</td>
+                                <td>Printer</td>
+                                <td>Speaker</td>
+                                <td>B</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td>Hard</td>
+                                <td>Define software in your own words.</td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td>A set of instructions or programs that tell hardware what to do.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <ul class="small text-muted ps-3 mb-0">
+                    <li>Difficulty accepts Easy, Medium, or Hard.</li>
+                    <li>Use Choice_A, Choice_B, ... up to Choice_Z as needed.</li>
+                    <li>Correct_Answer accepts labels like A/B/C or answer text for open-ended items.</li>
+                    <li>If choices are blank, the item is treated as open-ended.</li>
+                </ul>
+            </div>
+
             <div class="section-card">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div class="section-title mb-0">
@@ -563,6 +745,59 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const programsByDepartment = /*[[${programOptionsByDepartment}]]*/ {};
+        const subjectExamFileInput = document.getElementById('subjectExamFileInput');
+        const subjectExamFileName = document.getElementById('subjectExamFileName');
+        const subjectPapersSearchInput = document.getElementById('subjectPapersSearchInput');
+        const subjectPapersSearchBtn = document.getElementById('subjectPapersSearchBtn');
+        const subjectPapersSearchMeta = document.getElementById('subjectPapersSearchMeta');
+        const subjectPapersNoMatch = document.getElementById('subjectPapersNoMatch');
+
+        function runSubjectPapersSearch() {
+            if (!subjectPapersSearchInput) return;
+
+            const rows = Array.from(document.querySelectorAll('.subject-paper-row'));
+            const total = rows.length;
+            const query = (subjectPapersSearchInput.value || '').trim().toLowerCase();
+            let visible = 0;
+
+            rows.forEach(row => {
+                const haystack = (row.textContent || '').toLowerCase();
+                const matched = !query || haystack.includes(query);
+                row.classList.toggle('d-none', !matched);
+                if (matched) visible += 1;
+            });
+
+            if (subjectPapersSearchMeta) {
+                subjectPapersSearchMeta.textContent = `Showing ${visible} of ${total} paper(s)`;
+            }
+            if (subjectPapersNoMatch) {
+                subjectPapersNoMatch.classList.toggle('d-none', visible !== 0);
+            }
+        }
+
+        if (subjectExamFileInput && subjectExamFileName) {
+            subjectExamFileInput.addEventListener('change', () => {
+                const chosenFile = subjectExamFileInput.files && subjectExamFileInput.files.length > 0
+                    ? subjectExamFileInput.files[0].name
+                    : 'No file chosen';
+                subjectExamFileName.textContent = chosenFile;
+                subjectExamFileName.title = chosenFile;
+            });
+        }
+
+        if (subjectPapersSearchInput) {
+            subjectPapersSearchInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    runSubjectPapersSearch();
+                }
+            });
+            subjectPapersSearchInput.addEventListener('input', runSubjectPapersSearch);
+        }
+        if (subjectPapersSearchBtn) {
+            subjectPapersSearchBtn.addEventListener('click', runSubjectPapersSearch);
+        }
+
         document.querySelectorAll('.deadline-preset').forEach(sel => applyDeadlinePreset(sel));
 
         if (examSelect) {

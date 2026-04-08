@@ -158,7 +158,7 @@ public class TeacherController {
 
     @GetMapping("/homepage")
     public String homepage(Model model, Principal principal) {
-        return "redirect:/teacher/department-dashboard";
+        return "redirect:/teacher/subjects";
     }
 
     @GetMapping("/loading")
@@ -217,70 +217,7 @@ public class TeacherController {
 
     @GetMapping("/department-dashboard")
     public String departmentDashboard(Model model, Principal principal) {
-        String teacherEmail = principal != null ? principal.getName() : "";
-        List<Subject> teacherSubjects = teacherEmail.isBlank()
-            ? new ArrayList<>()
-            : subjectRepository.findByTeacherEmail(teacherEmail);
-
-        User currentTeacher = teacherEmail.isBlank() ? null : userRepository.findByEmail(teacherEmail).orElse(null);
-        String teacherFullName = currentTeacher == null ? "" : (currentTeacher.getFullName() == null ? "" : currentTeacher.getFullName().trim());
-        if (teacherFullName.isBlank() && !teacherEmail.isBlank()) {
-            int atPos = teacherEmail.indexOf('@');
-            teacherFullName = atPos > 0 ? teacherEmail.substring(0, atPos) : teacherEmail;
-        }
-        if (teacherFullName.isBlank()) {
-            teacherFullName = "Teacher";
-        }
-        String departmentName = currentTeacher == null ? "" : (currentTeacher.getDepartmentName() == null ? "" : currentTeacher.getDepartmentName().trim());
-
-        int departmentQuestionCount = 0;
-        int departmentTeacherCount = 0;
-        List<Subject> departmentSubjects = new ArrayList<>();
-        if (!departmentName.isBlank()) {
-            List<String> departmentTeacherEmails = userRepository.findAll().stream()
-                .filter(user -> user != null && user.getRole() == User.Role.TEACHER)
-                .filter(user -> departmentName.equalsIgnoreCase(user.getDepartmentName() == null ? "" : user.getDepartmentName().trim()))
-                .map(User::getEmail)
-                .filter(value -> value != null && !value.isBlank())
-                .toList();
-
-            departmentTeacherCount = departmentTeacherEmails.size();
-            Set<String> departmentTeacherEmailSet = departmentTeacherEmails.stream()
-                .map(value -> value.trim().toLowerCase())
-                .collect(java.util.stream.Collectors.toSet());
-
-            departmentSubjects = subjectRepository.findAll().stream()
-                .filter(subject -> subject != null && subject.getTeacherEmail() != null)
-                .filter(subject -> departmentTeacherEmailSet.contains(subject.getTeacherEmail().trim().toLowerCase()))
-                .sorted(Comparator.comparing(Subject::getSubjectName, String.CASE_INSENSITIVE_ORDER)
-                    .thenComparing(Subject::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
-
-            if (!departmentTeacherEmails.isEmpty()) {
-                Set<String> normalizedDepartmentTeacherEmails = departmentTeacherEmails.stream()
-                    .map(this::normalize)
-                    .filter(value -> !value.isBlank())
-                    .collect(Collectors.toSet());
-
-                departmentQuestionCount = (int) buildTemporaryQuestionBankItems(originalProcessedPaperRepository.findAll()).stream()
-                    .map(QuestionBankItem::getSourceTeacherEmail)
-                    .filter(value -> value != null && !value.isBlank())
-                    .map(this::normalize)
-                    .filter(normalizedDepartmentTeacherEmails::contains)
-                    .count();
-            }
-        }
-
-        model.addAttribute("subjects", teacherSubjects);
-        model.addAttribute("teacherSubjectCount", teacherSubjects.size());
-        model.addAttribute("departmentSubjects", departmentSubjects);
-        model.addAttribute("teacherEmail", teacherEmail);
-        model.addAttribute("teacherFullName", teacherFullName);
-        model.addAttribute("departmentName", departmentName);
-        model.addAttribute("departmentTeacherCount", departmentTeacherCount);
-        model.addAttribute("departmentQuestionCount", departmentQuestionCount);
-        model.addAttribute("departmentSubjectCount", departmentSubjects.size());
-        return "homepage";
+        return "redirect:/teacher/subjects";
     }
 
     @GetMapping("/subjects")
@@ -507,6 +444,7 @@ public class TeacherController {
         model.addAttribute("search", search == null ? "" : search);
         model.addAttribute("sharedExams", sharedExams);
         model.addAttribute("departmentName", currentDepartment);
+        model.addAttribute("teacherSubjects", subjectRepository.findByTeacherEmail(currentTeacherEmail));
         model.addAttribute("totalShared", sharedPage.getTotalElements());
         addPagingAttributes(model, sharedPage, safePageSize);
         return "teacher-department-papers";
@@ -762,6 +700,7 @@ public class TeacherController {
             gson.toJson(answerKey)
         );
         paper.setQuestionCount(questions.size());
+        paper.setSubjectId(resolveSubjectIdForTeacher(principal.getName(), normalizedSubject));
 
         String teacherDepartment = userRepository.findByEmail(principal.getName())
             .map(User::getDepartmentName)
@@ -785,6 +724,7 @@ public class TeacherController {
     @PostMapping("/process-exams-upload")
     public String processExamsUpload(@RequestParam("examCreated") MultipartFile examCreated,
                                      @RequestParam(value = "quizName", required = false) String quizName,
+                                     @RequestParam(value = "subjectId", required = false) Long subjectId,
                                      @RequestParam("subject") String subject,
                                      @RequestParam("activityType") String activityType,
                                      Principal principal,
@@ -792,12 +732,29 @@ public class TeacherController {
         try {
             if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
                 redirectAttributes.addFlashAttribute("errorMessage", "Unable to identify teacher account.");
-                return "redirect:/teacher/homepage";
+                return "redirect:/teacher/subjects";
             }
 
             if (examCreated == null || examCreated.isEmpty()) {
                 redirectAttributes.addFlashAttribute("errorMessage", "Please upload an exam file (PDF or CSV).");
-                return "redirect:/teacher/homepage";
+                return "redirect:/teacher/subjects";
+            }
+
+            Subject targetSubject = null;
+            if (subjectId != null) {
+                targetSubject = subjectRepository.findById(subjectId).orElse(null);
+                if (targetSubject == null || !matchesTeacherOwner(principal.getName(), targetSubject.getTeacherEmail())) {
+                    redirectAttributes.addFlashAttribute("errorMessage", "Invalid subject selected for upload.");
+                    return "redirect:/teacher/subjects";
+                }
+            }
+
+            String normalizedSubject = targetSubject != null
+                ? targetSubject.getSubjectName()
+                : (subject == null ? "" : subject.trim());
+            if (normalizedSubject.isBlank()) {
+                redirectAttributes.addFlashAttribute("errorMessage", "Subject is required.");
+                return "redirect:/teacher/subjects";
             }
 
             List<Map<String, Object>> questions = parseExamFile(examCreated);
@@ -813,7 +770,7 @@ public class TeacherController {
                 examId,
                 principal.getName(),
                 generatedExamName,
-                subject,
+                normalizedSubject,
                 activityType,
                 originalFilename,
                 gson.toJson(questions),
@@ -821,6 +778,11 @@ public class TeacherController {
                 gson.toJson(answerKeyMap)
             );
             paper.setQuestionCount(questions.size());
+            if (targetSubject != null) {
+                paper.setSubjectId(targetSubject.getId());
+            } else {
+                paper.setSubjectId(resolveSubjectIdForTeacher(principal.getName(), normalizedSubject));
+            }
 
             String teacherDepartment = userRepository.findByEmail(principal.getName())
                 .map(User::getDepartmentName)
@@ -848,10 +810,16 @@ public class TeacherController {
                     "Exam processed successfully as \"" + generatedExamName + "\" (name already existed)."
                 );
             }
+            if (targetSubject != null) {
+                return "redirect:/teacher/subject-classroom/" + targetSubject.getId();
+            }
             return "redirect:/teacher/processed-papers";
         } catch (Exception exception) {
             redirectAttributes.addFlashAttribute("errorMessage", "Failed to process exam: " + exception.getMessage());
-            return "redirect:/teacher/homepage";
+            if (subjectId != null) {
+                return "redirect:/teacher/subject-classroom/" + subjectId;
+            }
+            return "redirect:/teacher/subjects";
         }
     }
 
@@ -894,6 +862,8 @@ public class TeacherController {
         if (!isDepartmentPaperVisibleToTeacher(paper, currentTeacherEmail, currentDepartment, currentProgram)) {
             return "redirect:/teacher/department-papers";
         }
+
+        model.addAttribute("teacherSubjects", subjectRepository.findByTeacherEmail(currentTeacherEmail));
 
         return renderProcessedPaperDetail(paper, false, questionSearch, true, model);
     }
@@ -1003,6 +973,7 @@ public class TeacherController {
 
     @PostMapping("/processed-papers/{examId}/pull")
     public String pullProcessedPaper(@PathVariable("examId") String examId,
+                                     @RequestParam(name = "subjectId", required = false) Long subjectId,
                                      Principal principal,
                                      RedirectAttributes redirectAttributes) {
         String currentTeacherEmail = principal == null ? "" : (principal.getName() == null ? "" : principal.getName().trim());
@@ -1037,11 +1008,25 @@ public class TeacherController {
         String copiedExamId = "EXAM_" + UUID.randomUUID().toString().replace("-", "");
         String clonedExamName = ensureUniqueExamNameForTeacher(currentTeacherEmail, source.getExamName());
 
+        Subject targetSubject = null;
+        if (subjectId != null) {
+            targetSubject = subjectRepository.findById(subjectId).orElse(null);
+            if (targetSubject == null || !matchesTeacherOwner(currentTeacherEmail, targetSubject.getTeacherEmail())) {
+                redirectAttributes.addFlashAttribute("errorMessage", "Please choose one of your subjects.");
+                return "redirect:/teacher/department-papers";
+            }
+        }
+
+        if (targetSubject == null) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Select a subject before adding a shared quiz.");
+            return "redirect:/teacher/department-papers";
+        }
+
         OriginalProcessedPaper clone = new OriginalProcessedPaper(
             copiedExamId,
             currentTeacherEmail,
             clonedExamName,
-            source.getSubject(),
+            targetSubject.getSubjectName(),
             source.getActivityType(),
             source.getSourceFilename(),
             source.getOriginalQuestionsJson(),
@@ -1049,6 +1034,7 @@ public class TeacherController {
             source.getAnswerKeyJson()
         );
         clone.setQuestionCount(resolveStoredQuestionCount(source));
+        clone.setSubjectId(targetSubject.getId());
 
         clone.setOriginalTeacherEmail(source.getOriginalTeacherEmail() != null && !source.getOriginalTeacherEmail().isBlank() ? source.getOriginalTeacherEmail() : source.getTeacherEmail());
         clone.setDepartmentName(currentDepartment.isBlank() ? sourceDepartment : currentDepartment);
@@ -1069,9 +1055,9 @@ public class TeacherController {
 
         redirectAttributes.addFlashAttribute(
             "successMessage",
-            "Paper pulled successfully as \"" + clonedExamName + "\". You can now edit and add questions."
+            "Quiz added to " + targetSubject.getSubjectName() + " as \"" + clonedExamName + "\"."
         );
-        return "redirect:/teacher/manage-questions/" + copiedExamId;
+        return "redirect:/teacher/subject-classroom/" + targetSubject.getId();
     }
 
     @PostMapping("/processed-papers/{examId}/pick-questions")
@@ -1179,6 +1165,7 @@ public class TeacherController {
             gson.toJson(selectedAnswerKey)
         );
         clone.setQuestionCount(selectedQuestions.size());
+        clone.setSubjectId(source.getSubjectId());
 
         clone.setOriginalTeacherEmail(source.getOriginalTeacherEmail() != null && !source.getOriginalTeacherEmail().isBlank() ? source.getOriginalTeacherEmail() : source.getTeacherEmail());
         clone.setDepartmentName(currentDepartment.isBlank() ? sourceDepartment : currentDepartment);
@@ -1628,11 +1615,15 @@ public class TeacherController {
 
         List<Map<String, Object>> uploadedExams = new ArrayList<>();
         for (OriginalProcessedPaper paper : teacherPapers) {
-            if (paper.getSubject() != null && paper.getSubject().equalsIgnoreCase(subject.getSubjectName())) {
+            boolean belongsToSubject = (paper.getSubjectId() != null && paper.getSubjectId().equals(subject.getId()))
+                || (paper.getSubject() != null && paper.getSubject().equalsIgnoreCase(subject.getSubjectName()));
+            if (belongsToSubject) {
                 Map<String, Object> exam = new HashMap<>();
                 exam.put("examId", paper.getExamId());
                 exam.put("examName", paper.getExamName());
                 exam.put("activityType", paper.getActivityType());
+                exam.put("questionCount", resolveStoredQuestionCount(paper));
+                exam.put("processedAt", paper.getProcessedAt());
                 exam.put("questions", parseQuestionsJson(paper.getOriginalQuestionsJson()));
                 uploadedExams.add(exam);
             }
@@ -4945,6 +4936,19 @@ public class TeacherController {
         }
 
         return originalProcessedPaperRepository.findByTeacherEmailOrderByProcessedAtDesc(normalizedTeacherEmail);
+    }
+
+    private Long resolveSubjectIdForTeacher(String teacherEmail, String subjectName) {
+        if (teacherEmail == null || teacherEmail.isBlank() || subjectName == null || subjectName.isBlank()) {
+            return null;
+        }
+
+        return subjectRepository.findByTeacherEmail(teacherEmail).stream()
+            .filter(subject -> subject != null)
+            .filter(subject -> sameText(subject.getSubjectName(), subjectName))
+            .map(Subject::getId)
+            .findFirst()
+            .orElse(null);
     }
 
     private boolean matchesTeacherOwner(String teacherEmail, String ownerEmail) {
